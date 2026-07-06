@@ -1,0 +1,1 @@
+{'date': '2026-07-02', 'risk': np.float64(-0.5356040864206931), 'leadership': np.float64(-0.6897691675139137), 'volatility': 5, 'oar': 5, 'oos': np.float64(-0.6126866269673035), 'bias': 'DOWN'}
