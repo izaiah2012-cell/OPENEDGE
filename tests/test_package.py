@@ -9,6 +9,7 @@ import openedge.dashboard.app as dashboard_app
 import openedge.data.market as market_module
 import openedge.engines.history_engine as history_module
 import openedge.engines.macro_engine as macro_module
+import openedge.engines.research_writer as writer_module
 
 
 def load_cli_module():
@@ -27,6 +28,7 @@ def test_package_imports_work():
     assert explanation_module is not None
     assert macro_module is not None
     assert history_module is not None
+    assert writer_module is not None
 
 
 def test_csv_is_located_from_project_root():
@@ -45,6 +47,13 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
             return None
 
     class DummyStreamlit:
+        class _DummyCtx:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
         def set_page_config(self, *args, **kwargs):
             return None
 
@@ -86,6 +95,9 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
 
         def columns(self, count):
             return [DummyContainer() for _ in range(count)]
+
+        def container(self, *args, **kwargs):
+            return self._DummyCtx()
 
     monkeypatch.setattr(dashboard_app, "get_market_snapshot", lambda: {"SPY": {"price": 100.0, "change": 0.5}})
     monkeypatch.setattr(

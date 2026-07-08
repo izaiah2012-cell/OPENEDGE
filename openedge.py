@@ -7,8 +7,13 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from openedge.engines.history_engine import get_historical_matches
+from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
+from openedge.engines.research_writer import generate_research_summary
+
 BASE_DIR = Path(__file__).resolve().parent
 DB_FILE = BASE_DIR / "openedge_db.csv"
+REPORTS_DIR = BASE_DIR / "reports"
 
 # -----------------------------
 # DATA
@@ -412,6 +417,41 @@ def analyze():
             print("\nEDGE DETECTED (above random baseline)")
         else:
             print("\nNO EDGE (at or below random baseline)")
+
+    latest = df.iloc[-1].to_dict()
+
+    if latest.get("bias") == "UP" and float(latest.get("vix", 0) or 0) <= 5:
+        market_regime = "Risk On"
+    elif latest.get("bias") == "DOWN" or float(latest.get("vix", 0) or 0) >= 7:
+        market_regime = "Risk Off"
+    else:
+        market_regime = "Neutral"
+
+    macro_events = get_macro_events()
+    macro_risk = calculate_macro_risk(macro_events)
+    historical = get_historical_matches(DB_FILE, top_n=5)
+
+    summary_payload = {
+        "market_regime": market_regime,
+        "confidence": 65 if latest.get("bias") in ("UP", "DOWN") else 55,
+        "opening_auction_risk": latest.get("oar", "N/A"),
+        "opportunity_score": latest.get("oos", "N/A"),
+        "bias": latest.get("bias", "N/A"),
+        "leadership": {"Aggregate": {"score": latest.get("leadership", "N/A"), "status": "Observed"}},
+        "macro_events": macro_events,
+        "macro_risk": macro_risk,
+        "historical_match": historical.get("best_match", {}),
+        "historical_similarity": historical.get("average_similarity", 0.0),
+    }
+
+    report_text = generate_research_summary(summary_payload)
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    report_file = REPORTS_DIR / f"{datetime.now().strftime('%Y-%m-%d')}_research.md"
+    report_file.write_text(report_text, encoding="utf-8")
+
+    print("\nResearch report generated.")
+    print(f"Saved to:\n{report_file}")
 
 
 def main():

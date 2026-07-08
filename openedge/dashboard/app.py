@@ -8,6 +8,7 @@ from openedge.analytics import explain
 from openedge.engines.history_engine import get_historical_matches
 from openedge.data.market import get_market_snapshot
 from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
+from openedge.engines.research_writer import generate_research_summary
 from openedge.models.score_engine import (
     market_bias,
     opening_auction_risk,
@@ -251,6 +252,24 @@ def historical_match_table(matches):
     return frame.style.apply(style_row, axis=1)
 
 
+def classify_regime_from_signals(bias, vix_change):
+    if bias == "BULLISH" and vix_change <= 2:
+        return "Risk On"
+    if bias == "BEARISH" or vix_change >= 3:
+        return "Risk Off"
+    return "Neutral"
+
+
+def _render_research_summary(report_text):
+    container_fn = getattr(st, "container", None)
+    if callable(container_fn):
+        with container_fn(border=True):
+            st.markdown(report_text)
+        return
+
+    st.markdown(report_text)
+
+
 def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
     st.title("📈 OPENEDGE")
@@ -290,6 +309,23 @@ def main():
 
     st.header("Morning Brief")
     st.info(morning_brief(bias, regime, confidence, oar, oos))
+
+    summary_payload = {
+        "market_regime": classify_regime_from_signals(bias, snapshot.get("VIX", {}).get("change") or 0.0),
+        "confidence": confidence,
+        "opening_auction_risk": oar,
+        "opportunity_score": oos,
+        "bias": bias,
+        "leadership": leadership,
+        "macro_events": macro_events,
+        "macro_risk": macro_risk,
+        "historical_match": historical_result.get("best_match", {}),
+        "historical_similarity": historical_result.get("average_similarity", 0.0),
+    }
+    research_report = generate_research_summary(summary_payload)
+
+    st.header("🧠 AI Research Summary")
+    _render_research_summary(research_report)
 
     st.header("📅 Today's Macro Events")
     st.dataframe(macro_events_table(macro_events), hide_index=True, width="stretch")
