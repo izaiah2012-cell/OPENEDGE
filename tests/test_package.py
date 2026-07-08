@@ -97,15 +97,12 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
     monkeypatch.setattr(
         dashboard_app,
         "get_historical_matches",
-        lambda: [{"rank": 1, "date": "2024-01-01", "similarity": 87.5, "bias": "UP", "actual": "UP", "correct": 1}],
-    )
-    monkeypatch.setattr(
-        dashboard_app,
-        "summarize_historical_matches",
-        lambda matches: {
-            "most_similar_session": "2024-01-01 (87.50%)",
+        lambda csv_path, top_n=5: {
+            "matches": [{"rank": 1, "date": "2024-01-01", "similarity": 87.5, "bias": "UP", "actual": "UP", "correct": 1}],
+            "best_match": {"date": "2024-01-01", "similarity": 87.5},
             "average_similarity": 87.5,
             "most_common_outcome": "UP",
+            "message": "",
         },
     )
     monkeypatch.setattr(
