@@ -1,147 +1,73 @@
 from pathlib import Path
 from datetime import datetime
+import json
 
 import pandas as pd
 import streamlit as st
 
-from openedge.analytics import explain
+try:
+    import plotly.graph_objects as go
+except Exception:  # pragma: no cover
+    go = None
+
+from openedge.dashboard.components import (
+    inject_styles,
+    render_footer,
+    render_metric_card,
+    render_section_header,
+    render_status_badge,
+)
+from openedge.data.market import get_market_snapshot
 from openedge.engines.history_engine import get_historical_matches
 from openedge.engines.intelligence import IntelligenceEngine
-from openedge.data.market import get_market_snapshot
 from openedge.engines.macro_engine import get_macro_events
-from openedge.engines.market_internals import get_market_internals, summarize_market_internals
-from openedge.engines.research_writer import generate_research_summary
+from openedge.engines.market_internals import get_market_internals
 from openedge.models.leadership_engine import evaluate_sector_leadership
+from openedge.validation.validation_engine import ValidationEngine
 
-LEADERSHIP_SECTORS = [
-    "Technology",
-    "Financials",
-    "Industrials",
-    "Healthcare",
-    "Consumer",
-    "Energy",
-]
+LEADERSHIP_SECTORS = ["Technology", "Financials", "Industrials", "Healthcare", "Consumer", "Energy"]
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CSV_FILE = BASE_DIR / "openedge_db.csv"
 VERSION_FILE = BASE_DIR / "VERSION"
+DISPLAY_VERSION = "v1.0.0-beta"
+WORKFLOW_STATUS_FILE = BASE_DIR / "database" / "workflow_status.json"
+JOURNAL_FILE = BASE_DIR / "research_journal.csv"
 
 
-def _inject_dashboard_styles():
-    st.markdown(
-        """
-        <style>
-        .oe-section-gap { margin-top: 0.75rem; margin-bottom: 0.25rem; }
-        .oe-status-card {
-            border-radius: 12px;
-            padding: 0.8rem 0.9rem;
-            border: 1px solid rgba(148, 163, 184, 0.35);
-            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0));
-            margin-bottom: 0.5rem;
-        }
-        .oe-status-label {
-            font-size: 0.8rem;
-            color: #94a3b8;
-            margin-bottom: 0.2rem;
-        }
-        .oe-status-value {
-            font-size: 1.05rem;
-            font-weight: 700;
-        }
-        .oe-health {
-            border-radius: 10px;
-            padding: 0.5rem 0.75rem;
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            background: rgba(16, 185, 129, 0.08);
-            font-size: 0.88rem;
-        }
-        .oe-footer {
-            margin-top: 1.2rem;
-            border-top: 1px solid rgba(148, 163, 184, 0.25);
-            padding-top: 0.75rem;
-            color: #94a3b8;
-            font-size: 0.85rem;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+def _safe_plotly_chart(st_module, fig):
+    plotly_chart = getattr(st_module, "plotly_chart", None)
+    if callable(plotly_chart):
+        plotly_chart(fig, use_container_width=True)
+    else:
+        st_module.write("Chart view unavailable in this environment.")
 
 
-def _read_version():
-    if VERSION_FILE.exists():
-        return VERSION_FILE.read_text(encoding="utf-8").strip()
-    return "dev"
-
-
-def _card_color(value):
-    if value in ("BULLISH", "LOW", "Strong", "Risk On"):
-        return "#16a34a"
-    if value in ("BEARISH", "HIGH", "Weak", "Risk Off"):
-        return "#dc2626"
-    return "#d97706"
-
-
-def render_status_cards(values):
-    cols = st.columns(len(values))
-    for col, (label, value) in zip(cols, values):
-        color = _card_color(str(value))
-        col.markdown(
-            f"""
-            <div class="oe-status-card">
-                <div class="oe-status-label">{label}</div>
-                <div class="oe-status-value" style="color:{color}">{value}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-def render_system_health_banner(db_ready):
-    checks = [
-        ("Market Data", "Healthy"),
-        ("Research Engine", "Healthy"),
-        ("Historical Database", "Healthy" if db_ready else "Waiting"),
-        ("Dashboard", "Healthy"),
-        ("Tests", "Verified"),
-    ]
-    health_cols = st.columns(5)
-    for col, (name, status) in zip(health_cols, checks):
-        icon = "🟢" if status in ("Healthy", "Verified") else "🟡"
-        col.markdown(f"<div class='oe-health'><strong>{name}</strong><br>{icon} {status}</div>", unsafe_allow_html=True)
-
-
-def format_bias_with_color(bias):
-    if bias == "BULLISH":
-        return ":green[BULLISH]"
-    if bias == "BEARISH":
-        return ":red[BEARISH]"
-    return ":orange[NEUTRAL]"
-
-
-def market_internals_table(internals):
-    if not internals:
+def market_internals_table(rows):
+    if not rows:
         return pd.DataFrame(columns=["Asset", "Price", "Daily %", "Direction"])
 
-    rows = []
-    for asset, values in internals.items():
-        price = values.get("price")
-        daily_change = values.get("daily_change_percent")
-        direction = values.get("direction", "N/A")
-        if daily_change is None:
-            daily_change_text = "N/A"
-        elif abs(daily_change) < 1e-12:
-            daily_change_text = "0.00%"
-        else:
-            daily_change_text = f"{daily_change:+.2f}%"
-        rows.append(
-            {
-                "Asset": asset,
-                "Price": "N/A" if price is None else f"{price:,.2f}",
-                "Daily %": daily_change_text,
-                "Direction": direction,
-            }
-        )
+    if isinstance(rows, dict):
+        normalized = []
+        for asset, values in rows.items():
+            price = values.get("price")
+            daily_change = values.get("daily_change_percent")
+            if daily_change is None:
+                daily_change_text = "N/A"
+            elif abs(daily_change) < 1e-12:
+                daily_change_text = "0.00%"
+            else:
+                daily_change_text = f"{daily_change:+.2f}%"
+
+            normalized.append(
+                {
+                    "Asset": asset,
+                    "Price": "N/A" if price is None else f"{price:,.2f}",
+                    "Daily %": daily_change_text,
+                    "Direction": values.get("direction", "N/A"),
+                }
+            )
+        rows = normalized
 
     frame = pd.DataFrame(rows)
 
@@ -161,11 +87,7 @@ def market_internals_table(internals):
             return "color: #b91c1c; font-weight: 700;"
         return "color: #d97706; font-weight: 700;"
 
-    return (
-        frame.style
-        .map(style_change, subset=["Daily %"])
-        .map(style_direction, subset=["Direction"])
-    )
+    return frame.style.map(style_change, subset=["Daily %"]).map(style_direction, subset=["Direction"])
 
 
 def get_market_internals_with_cache():
@@ -180,13 +102,13 @@ def get_market_internals_with_cache():
     return _cached_fetch()
 
 
-def _render_bullet_lines(values):
+def _render_bullet_lines(st_module, values):
     if not values:
-        st.write("- N/A")
+        st_module.write("- N/A")
         return
 
     for value in values:
-        st.write(f"- {value}")
+        st_module.write(f"- {value}")
 
 
 def load_signal_history():
@@ -245,62 +167,64 @@ def get_leadership_with_fallback():
     return leadership, fetched_at, used_fallback
 
 
-def leadership_table(leadership, fetched_at):
-    age_seconds = max(0, int((datetime.now() - fetched_at).total_seconds()))
-    freshness = "Live" if age_seconds < 120 else "Cached"
-
-    rows = []
-    for sector in LEADERSHIP_SECTORS:
-        values = leadership.get(sector, {})
-        rows.append(
-            {
-                "Sector": sector,
-                "Score (%)": values.get("score", 0.0),
-                "5D Momentum (%)": values.get("momentum_5d", 0.0),
-                "Status": values.get("status", "Neutral"),
-                "Last Updated": fetched_at.strftime("%H:%M:%S"),
-                "Freshness": freshness,
-            }
-        )
+def leadership_chart(rows):
+    if not rows:
+        return None
 
     frame = pd.DataFrame(rows)
+    if frame.empty or "Sector" not in frame.columns:
+        return None
 
-    def style_status(value):
-        if value == "Strong":
-            return "color: #15803d; font-weight: 700;"
-        if value == "Weak":
-            return "color: #b91c1c; font-weight: 700;"
-        return "color: #d97706; font-weight: 700;"
+    frame["Score (%)"] = pd.to_numeric(frame.get("Score (%)", 0), errors="coerce").fillna(0.0)
 
-    return frame.style.map(style_status, subset=["Status"])
+    colors = []
+    for status in frame.get("Status", []):
+        if status == "Strong":
+            colors.append("#16a34a")
+        elif status == "Weak":
+            colors.append("#dc2626")
+        else:
+            colors.append("#d97706")
+
+    if go is None:
+        return frame
+
+    fig = go.Figure(go.Bar(x=frame["Score (%)"], y=frame["Sector"], orientation="h", marker_color=colors))
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=300,
+        xaxis_title="Strength",
+        yaxis_title="",
+        showlegend=False,
+    )
+    return fig
 
 
-def macro_events_table(events):
-    if not events:
+def macro_events_table(rows):
+    if not rows:
         return pd.DataFrame(columns=["Time", "Event", "Impact"])
 
-    return pd.DataFrame(
-        [
-            {
-                "Time": event.get("time", "N/A"),
-                "Event": event.get("event", "N/A"),
-                "Impact": event.get("impact", "Low"),
-            }
-            for event in events
-        ]
-    )
+    return pd.DataFrame(rows)
 
 
-def format_macro_risk(risk):
-    if risk == "LOW":
-        return ":green[LOW]"
-    if risk == "MEDIUM":
-        return ":orange[MEDIUM]"
-    return ":red[HIGH]"
+def macro_events_styled_table(rows):
+    frame = macro_events_table(rows)
+    if frame.empty:
+        return frame
+
+    def style_impact(value):
+        text = str(value).upper()
+        if text == "HIGH":
+            return "color: #dc2626; font-weight: 700;"
+        if text == "MEDIUM":
+            return "color: #d97706; font-weight: 700;"
+        return "color: #16a34a; font-weight: 700;"
+
+    return frame.style.map(style_impact, subset=["Impact"])
 
 
-def historical_match_table(matches):
-    if not matches:
+def historical_match_table(rows):
+    if not rows:
         return pd.DataFrame(
             columns=[
                 "Rank",
@@ -314,21 +238,7 @@ def historical_match_table(matches):
             ]
         )
 
-    frame = pd.DataFrame(
-        [
-            {
-                "Rank": match.get("rank"),
-                "Date": match.get("date"),
-                "Similarity %": match.get("similarity"),
-                "Confidence Band": match.get("confidence_band", "Weak"),
-                "Bias": match.get("bias"),
-                "Actual": match.get("actual"),
-                "Correct": match.get("correct"),
-                "Why Similar": match.get("why_similar", ""),
-            }
-            for match in matches
-        ]
-    )
+    frame = pd.DataFrame(rows)
 
     def style_row(row):
         row_style = [""] * len(row)
@@ -349,187 +259,300 @@ def historical_match_table(matches):
     return frame.style.apply(style_row, axis=1)
 
 
-def _render_research_summary(report_text):
-    container_fn = getattr(st, "container", None)
-    if callable(container_fn):
-        with container_fn(border=True):
-            st.markdown(report_text)
-        return
+def historical_matches_chart(rows):
+    if not rows:
+        return None
 
-    st.markdown(report_text)
+    frame = pd.DataFrame(rows).head(5).copy()
+    if frame.empty:
+        return None
+
+    frame["Similarity %"] = pd.to_numeric(frame.get("Similarity %", 0), errors="coerce").fillna(0.0)
+    frame["Date"] = frame.get("Date", "N/A").astype(str)
+
+    if go is None:
+        return frame[["Date", "Similarity %"]]
+
+    fig = go.Figure(go.Bar(x=frame["Date"], y=frame["Similarity %"], marker_color="#2563eb"))
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=320,
+        xaxis_title="Session Date",
+        yaxis_title="Similarity %",
+        showlegend=False,
+    )
+    return fig
+
+
+def rolling_accuracy_chart(points):
+    if not points:
+        return None
+
+    frame = pd.DataFrame(points)
+    if frame.empty or "date" not in frame.columns or "accuracy" not in frame.columns:
+        return None
+
+    frame["accuracy"] = pd.to_numeric(frame["accuracy"], errors="coerce")
+    frame = frame.dropna(subset=["accuracy"])
+    if frame.empty:
+        return None
+
+    if go is None:
+        return frame[["date", "accuracy"]]
+
+    fig = go.Figure(go.Scatter(x=frame["date"], y=frame["accuracy"], mode="lines+markers", line=dict(color="#0ea5e9", width=2), marker=dict(size=6)))
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=320,
+        xaxis_title="Date",
+        yaxis_title="Accuracy %",
+        yaxis=dict(range=[0, 100]),
+        showlegend=False,
+    )
+    return fig
+
+
+def _render_system_status(st_module, system_status):
+    checks = [
+        ("Market Data", system_status.get("market_data", "Waiting")),
+        ("Research Engine", system_status.get("research_engine", "Waiting")),
+        ("Historical DB", system_status.get("historical_database", "Waiting")),
+        ("Dashboard", system_status.get("dashboard", "Waiting")),
+        ("Tests", system_status.get("tests", "Waiting")),
+    ]
+    cols = st_module.columns(5)
+    for col, (name, value) in zip(cols, checks):
+        render_metric_card(col, name, value)
+
+
+def load_workflow_status():
+    if not WORKFLOW_STATUS_FILE.exists():
+        return {
+            "last_workflow_run": "N/A",
+            "workflow_duration_seconds": "N/A",
+            "last_report_generated": "N/A",
+            "research_status": "N/A",
+        }
+
+    try:
+        payload = json.loads(WORKFLOW_STATUS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            "last_workflow_run": "N/A",
+            "workflow_duration_seconds": "N/A",
+            "last_report_generated": "N/A",
+            "research_status": "N/A",
+        }
+
+    return {
+        "last_workflow_run": payload.get("last_workflow_run", "N/A"),
+        "workflow_duration_seconds": payload.get("workflow_duration_seconds", payload.get("execution_time_seconds", "N/A")),
+        "last_report_generated": payload.get("last_report_generated", "N/A"),
+        "research_status": payload.get("research_status", payload.get("status", "N/A")),
+    }
 
 
 def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
-    _inject_dashboard_styles()
+    inject_styles(st)
 
-    generated_at = datetime.now()
-    version = _read_version()
-
-    st.title("📈 OPENEDGE")
-    st.subheader("Research Before Risk")
+    generated_at = datetime.now().astimezone()
 
     snapshot = get_market_snapshot()
     market_internals, internals_fetched_at = get_market_internals_with_cache()
     macro_events = get_macro_events()
     historical_result = get_historical_matches(CSV_FILE, top_n=5)
-    historical_matches = historical_result.get("matches", [])
-    leadership, leadership_fetched_at, used_fallback = get_leadership_with_fallback()
+    leadership, _, used_fallback = get_leadership_with_fallback()
     latest_signal = load_latest_signal()
     history_df = load_signal_history()
+    validation_engine = ValidationEngine(db_path=CSV_FILE, journal_path=JOURNAL_FILE, reports_dir=BASE_DIR / "reports")
 
     engine = IntelligenceEngine(
-        market_snapshot=snapshot,
+        latest_signal=latest_signal,
         market_internals=market_internals,
         leadership=leadership,
         macro_events=macro_events,
-        historical_match=historical_result,
-        latest_signal=latest_signal,
+        historical_matches=historical_result,
+        market_snapshot=snapshot,
+        history_df=history_df,
     )
     report = engine.build_report()
+    workflow_status = load_workflow_status()
+    market = report.get("market", {})
+    macro = report.get("macro", {})
+    leadership_report = report.get("leadership", {})
+    historical = report.get("historical", {})
+    summary = report.get("summary", {})
 
-    st.markdown("<div class='oe-section-gap'></div>", unsafe_allow_html=True)
-    render_system_health_banner(db_ready=history_df is not None)
+    st.markdown("<div class='oe-shell'><div class='oe-kicker'>Morning Research Terminal</div><h1 class='oe-title'>OPENEDGE</h1><p class='oe-subtitle'>Research Before Risk</p></div>", unsafe_allow_html=True)
 
-    with st.container(border=True):
-        st.header("Today's Intelligence")
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Confidence", report.get("confidence", "N/A"))
-        col2.metric("Bias", report.get("bias", "N/A"))
-        col3.metric("Opportunity Score", report.get("opportunity_score", "N/A"))
-        col4.metric("Market Regime", report.get("market_regime", "N/A"))
-        col5.metric("Risk Level", report.get("risk_level", "N/A"))
+    meta_cols = st.columns(4)
+    meta_cols[0].markdown(f"<div class='oe-meta-card'><strong>Current Date</strong><br>{generated_at.strftime('%Y-%m-%d')}</div>", unsafe_allow_html=True)
+    meta_cols[1].markdown(f"<div class='oe-meta-card'><strong>Current Time</strong><br>{generated_at.strftime('%H:%M:%S %Z')}</div>", unsafe_allow_html=True)
+    meta_cols[2].markdown(f"<div class='oe-meta-card'><strong>OPENEDGE Version</strong><br>{DISPLAY_VERSION}</div>", unsafe_allow_html=True)
+    meta_cols[3].markdown(f"<div class='oe-meta-card'><strong>Last Market Refresh</strong><br>{internals_fetched_at.strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
 
-        confidence = float(report.get("confidence", 0))
-        st.progress(max(0.0, min(1.0, confidence / 100.0)))
-        st.write(f"Market Bias: {format_bias_with_color(report.get('bias', 'NEUTRAL'))}")
-        render_status_cards(
-            [
-                ("Bias State", report.get("bias", "N/A")),
-                ("Regime", report.get("market_regime", "N/A")),
-                ("Risk", report.get("risk_level", "N/A")),
-                ("Best Match Band", historical_result.get("best_match", {}).get("confidence_band", "N/A")),
-            ]
-        )
-        st.info(report.get("summary", "N/A"))
+    render_section_header(st, "Workflow Automation")
+    w1, w2, w3, w4 = st.columns(4)
+    render_metric_card(w1, "Last Workflow Run", workflow_status.get("last_workflow_run", "N/A"))
+    duration = workflow_status.get("workflow_duration_seconds", "N/A")
+    duration_value = f"{duration}s" if isinstance(duration, (int, float)) else str(duration)
+    render_metric_card(w2, "Workflow Duration", duration_value)
+    render_metric_card(w3, "Last Report Generated", workflow_status.get("last_report_generated", "N/A"))
+    render_metric_card(w4, "Research Status", workflow_status.get("research_status", "N/A"))
 
-    with st.container(border=True):
-        st.header("Market Internals")
-        st.dataframe(market_internals_table(market_internals), hide_index=True, width="stretch")
-        st.caption(f"Last updated: {internals_fetched_at.strftime('%H:%M:%S')}")
-        st.info(summarize_market_internals(market_internals))
+    render_section_header(st, "System Status")
+    _render_system_status(st, summary.get("system_status", {}))
 
-    with st.container(border=True):
-        st.header("OPENEDGE MORNING INTELLIGENCE")
+    render_section_header(st, "📊 Research Validation")
+    validation_summary = validation_engine.summary_metrics()
+    rolling_20 = validation_engine.rolling_accuracy(window=20)
+    by_regime = validation_engine.accuracy_by_regime().get("items", [])
+    by_confidence = validation_engine.accuracy_by_confidence_band().get("items", [])
 
-        st.subheader("Confidence Gauge")
-        st.metric("Confidence", f"{report.get('confidence', 0)}/100")
-        st.progress(max(0.0, min(1.0, float(report.get("confidence", 0)) / 100.0)))
+    v1, v2, v3, v4, v5 = st.columns(5)
+    render_metric_card(v1, "Total Signals", validation_summary.get("total_signals", 0))
+    render_metric_card(v2, "Correct Signals", validation_summary.get("correct_signals", 0))
+    render_metric_card(v3, "Incorrect Signals", validation_summary.get("incorrect_signals", 0))
+    render_metric_card(v4, "Overall Accuracy", f"{float(validation_summary.get('overall_accuracy', 0.0)):.2f}%")
+    render_metric_card(v5, "Rolling 20-session Accuracy", f"{float(validation_summary.get('rolling_20_accuracy', 0.0)):.2f}%")
 
-        info_cols = st.columns(2)
-        info_cols[0].metric("Market Regime", report.get("market_regime", "N/A"))
-        info_cols[1].metric("Opening Style", report.get("opening_style", "N/A"))
+    v6, v7, v8, v9, v10 = st.columns(5)
+    render_metric_card(v6, "Rolling 50-session Accuracy", f"{float(validation_summary.get('rolling_50_accuracy', 0.0)):.2f}%")
+    render_metric_card(v7, "Average Confidence", f"{float(validation_summary.get('average_confidence', 0.0)):.2f}")
+    render_metric_card(v8, "Best Regime", validation_summary.get("best_performing_regime", "N/A"))
+    render_metric_card(v9, "Worst Regime", validation_summary.get("worst_performing_regime", "N/A"))
+    render_metric_card(v10, "Avg Historical Similarity", f"{float(validation_summary.get('average_historical_similarity', 0.0)):.2f}%")
 
-        st.subheader("Key Risks")
-        _render_bullet_lines(report.get("key_risks", []))
-
-        st.subheader("Today's Focus")
-        st.write(report.get("focus", "N/A"))
-
-        st.subheader("Executive Summary")
-        st.info(report.get("summary", "N/A"))
-
-    summary_payload = {
-        "market_regime": report.get("market_regime", "N/A"),
-        "confidence": report.get("confidence", 0),
-        "opening_auction_risk": "N/A",
-        "opportunity_score": report.get("opportunity_score", "N/A"),
-        "bias": report.get("bias", "N/A"),
-        "leadership": leadership,
-        "macro_events": macro_events,
-        "macro_risk": report.get("risk_level", "N/A"),
-        "historical_match": historical_result.get("best_match", {}),
-        "historical_similarity": historical_result.get("average_similarity", 0.0),
-    }
-    research_report = generate_research_summary(summary_payload)
-
-    with st.container(border=True):
-        st.header("🧠 AI Research Summary")
-        _render_research_summary(research_report)
-
-    with st.container(border=True):
-        st.header("📅 Today's Macro Events")
-        st.dataframe(macro_events_table(macro_events), hide_index=True, width="stretch")
-        st.metric("Macro Risk", report.get("risk_level", "N/A"))
-        st.write(f"Macro Risk Level: {format_macro_risk(report.get('risk_level', 'MEDIUM'))}")
-
-    with st.container(border=True):
-        st.header("Leadership")
-        if used_fallback:
-            st.info("Leadership is partially using last known values due to temporary data gaps.")
-        st.dataframe(leadership_table(leadership, leadership_fetched_at), hide_index=True, width="stretch")
-
-    st.divider()
-
-    with st.container(border=True):
-        st.header("Historical Research")
-        if latest_signal:
-            r1, r2, r3, r4 = st.columns(4)
-            r1.metric("Latest Bias", latest_signal.get("bias", "N/A"))
-            r2.metric("Actual", latest_signal.get("actual", "N/A"))
-            r3.metric("VIX Score", latest_signal.get("vix", "N/A"))
-            r4.metric("Correct", latest_signal.get("correct", "N/A"))
-
-            if "risk" in latest_signal and "leadership" in latest_signal and "vix" in latest_signal:
-                st.write(explain(latest_signal))
+    if not rolling_20.get("points"):
+        st.info("No validation records available yet. Run morning sessions to populate performance charts.")
+    else:
+        st.markdown("**Rolling Accuracy**")
+        rolling_frame = pd.DataFrame(rolling_20.get("points", []))
+        if go is None:
+            st.dataframe(rolling_frame, hide_index=True, width="stretch")
         else:
-            st.info("No signal history is available yet. Run the analysis workflow to populate the database.")
+            fig = go.Figure(
+                go.Scatter(
+                    x=rolling_frame["date"],
+                    y=rolling_frame["accuracy"],
+                    mode="lines+markers",
+                    line=dict(color="#0ea5e9", width=2),
+                )
+            )
+            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+            _safe_plotly_chart(st, fig)
 
-    with st.container(border=True):
-        st.header("📈 Historical Match")
-
-        best_match = historical_result.get("best_match", {})
-        most_similar_session = (
-            f"{best_match.get('date', 'N/A')} ({best_match.get('similarity', 0):.2f}%)"
-            if best_match
-            else "N/A"
-        )
-
-        h1, h2, h3 = st.columns(3)
-        h1.metric("Most Similar Session", most_similar_session)
-        h2.metric("Average Similarity", f"{historical_result.get('average_similarity', 0.0):.2f}%")
-        h3.metric("Most Common Outcome", historical_result.get("most_common_outcome", "N/A"))
-
-        if historical_matches:
-            st.dataframe(historical_match_table(historical_matches), hide_index=True, width="stretch")
+    st.markdown("**Accuracy by Regime**")
+    if by_regime:
+        regime_frame = pd.DataFrame(by_regime)
+        if go is None:
+            st.dataframe(regime_frame, hide_index=True, width="stretch")
         else:
-            st.info("Not enough historical data yet. Keep collecting sessions.")
+            fig = go.Figure(go.Bar(x=regime_frame["regime"], y=regime_frame["accuracy"], marker_color="#10b981"))
+            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+            _safe_plotly_chart(st, fig)
+    else:
+        st.info("No regime-level accuracy data available yet.")
 
-    with st.container(border=True):
-        st.header("Performance")
-        if history_df is not None and "correct" in history_df.columns:
-            valid = pd.to_numeric(history_df["correct"], errors="coerce").dropna()
-            if not valid.empty:
-                win_rate = float(valid.mean()) * 100
-                p1, p2 = st.columns(2)
-                p1.metric("Signals Tracked", len(valid))
-                p2.metric("Historical Accuracy", f"{win_rate:.2f}%")
-            else:
-                st.info("Performance metrics will appear once outcomes are recorded.")
+    st.markdown("**Confidence Band Accuracy**")
+    if by_confidence:
+        confidence_frame = pd.DataFrame(by_confidence)
+        if go is None:
+            st.dataframe(confidence_frame, hide_index=True, width="stretch")
         else:
-            st.info("Performance metrics will appear once historical data is available.")
+            fig = go.Figure(go.Bar(x=confidence_frame["band"], y=confidence_frame["accuracy"], marker_color="#f59e0b"))
+            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+            _safe_plotly_chart(st, fig)
+    else:
+        st.info("No confidence band records available yet.")
 
-    st.markdown(
-        f"""
-        <div class="oe-footer">
-            <strong>OPENEDGE {version}</strong><br>
-            Generation timestamp: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}<br>
-            Research framework: OPENEDGE Multi-Engine Research Framework<br>
-            Data source: Yahoo Finance + OPENEDGE CSV History
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_section_header(st, "Today's Decision", "Executive snapshot for the pre-market session")
+    decision_cells = [
+        ("Market Regime", f"{market.get('market_regime', 'N/A')} {render_status_badge(market.get('market_regime', 'N/A'))}"),
+        ("Bias", f"{market.get('bias', 'N/A')} {render_status_badge(market.get('bias', 'N/A'))}"),
+        ("Confidence", f"{market.get('confidence', 'N/A')}/100"),
+        ("Opening Auction Risk", f"{market.get('opening_risk', 'N/A')}/10"),
+        ("Opportunity Score", f"{market.get('opportunity_score', 'N/A')}/10"),
+        ("Opening Style", market.get("opening_style", "N/A")),
+        ("Primary Risk", (summary.get("key_risks", ["No elevated risk catalyst identified"]) or ["No elevated risk catalyst identified"])[0]),
+        ("Suggested Focus", summary.get("todays_focus", "N/A")),
+    ]
+    decision_html = "".join([f"<div class='oe-cell'><div class='oe-cell-label'>{label}</div><div class='oe-cell-value'>{value}</div></div>" for label, value in decision_cells])
+    st.markdown(f"<div class='oe-shell'><div class='oe-decision-grid'>{decision_html}</div></div>", unsafe_allow_html=True)
+
+    render_section_header(st, "KPI Dashboard")
+    k1, k2, k3, k4, k5 = st.columns(5)
+    render_metric_card(k1, "Confidence", f"{market.get('confidence', 'N/A')}/100")
+    render_metric_card(k2, "Opening Auction Risk", f"{market.get('opening_risk', 'N/A')}/10")
+    render_metric_card(k3, "Bias", market.get("bias", "N/A"))
+    render_metric_card(k4, "Opportunity Score", f"{market.get('opportunity_score', 'N/A')}/10")
+    render_metric_card(k5, "Market Regime", market.get("market_regime", "N/A"))
+    confidence_value = float(market.get("confidence", 0)) if market.get("confidence") not in (None, "N/A") else 0.0
+    st.progress(max(0.0, min(1.0, confidence_value / 100.0)))
+
+    render_section_header(st, "Market Internals")
+    st.dataframe(market_internals_table(market.get("internals_rows", [])), hide_index=True, width="stretch")
+    st.caption(market.get("internals_summary", "N/A"))
+
+    render_section_header(st, "Leadership")
+    if used_fallback:
+        st.info("Leadership is partially using last known values due to temporary data gaps.")
+    leader_chart = leadership_chart(leadership_report.get("rows", []))
+    if isinstance(leader_chart, pd.DataFrame):
+        st.dataframe(leader_chart, hide_index=True, width="stretch")
+    elif leader_chart is not None:
+        _safe_plotly_chart(st, leader_chart)
+    else:
+        st.info("Leadership chart unavailable.")
+
+    render_section_header(st, "Macro Events")
+    st.dataframe(macro_events_styled_table(macro.get("today_events", [])), hide_index=True, width="stretch")
+    render_metric_card(st, "Overall Macro Risk", macro.get("macro_risk", "N/A"))
+
+    render_section_header(st, "Historical Match")
+    best_match = historical.get("best_match", {})
+    h1, h2, h3, h4 = st.columns(4)
+    render_metric_card(h1, "Best Match", best_match.get("date", "N/A"))
+    render_metric_card(h2, "Similarity", f"{float(best_match.get('similarity', 0.0)):.2f}%")
+    render_metric_card(h3, "Expected Outcome", historical.get("expected_outcome", "N/A"))
+    render_metric_card(h4, "Historical Confidence", historical.get("historical_confidence", "N/A"))
+    hist_chart = historical_matches_chart(historical.get("rows", []))
+    if isinstance(hist_chart, pd.DataFrame):
+        st.dataframe(hist_chart, hide_index=True, width="stretch")
+    elif hist_chart is not None:
+        _safe_plotly_chart(st, hist_chart)
+
+    render_section_header(st, "Performance")
+    performance = summary.get("performance", {})
+    p1, p2, p3, p4 = st.columns(4)
+    render_metric_card(p1, "Signals Tracked", performance.get("signals_tracked", 0))
+    render_metric_card(p2, "Correct Calls", performance.get("correct_calls", 0))
+    render_metric_card(p3, "Incorrect Calls", performance.get("incorrect_calls", 0))
+    render_metric_card(p4, "Historical Accuracy", f"{float(performance.get('historical_accuracy') or 0.0):.2f}%")
+    rolling_chart = rolling_accuracy_chart(performance.get("rolling_accuracy", []))
+    if isinstance(rolling_chart, pd.DataFrame):
+        st.dataframe(rolling_chart, hide_index=True, width="stretch")
+    elif rolling_chart is not None:
+        _safe_plotly_chart(st, rolling_chart)
+
+    render_section_header(st, "AI Morning Brief", "Executive research narrative")
+    st.markdown("<div class='oe-brief'>", unsafe_allow_html=True)
+    st.markdown("**Executive Summary**")
+    st.write(summary.get("executive_summary", "N/A"))
+    st.markdown("**Today's Focus**")
+    st.write(summary.get("todays_focus", "N/A"))
+    st.markdown("**Primary Risks**")
+    _render_bullet_lines(st, summary.get("key_risks", []))
+    st.markdown("**Strengths**")
+    _render_bullet_lines(st, summary.get("strengths", []))
+    st.markdown("**Weaknesses**")
+    _render_bullet_lines(st, summary.get("weaknesses", []))
+    st.markdown("**Research Conclusion**")
+    st.write(summary.get("research_conclusion", "N/A"))
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    render_footer(st, DISPLAY_VERSION, generated_at)
 
 
 if __name__ == "__main__":

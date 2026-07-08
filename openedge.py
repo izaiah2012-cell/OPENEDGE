@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,9 @@ import yfinance as yf
 from openedge.engines.history_engine import get_historical_matches
 from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
 from openedge.engines.research_writer import generate_research_summary
+from openedge.validation.journal import backfill_from_db, dedupe_entries
+from openedge.validation.validation_engine import ValidationEngine
+from openedge.workflows import MorningWorkflow
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_FILE = BASE_DIR / "openedge_db.csv"
@@ -456,12 +460,29 @@ def analyze():
 
 def main():
     parser = argparse.ArgumentParser(description="OPENEDGE signal generator and analytics")
-    parser.add_argument("mode", nargs="?", default="run", choices=["run", "analyze", "edge", "feature"],
-                        help="run the signal generator, analyze saved results, test edge accuracy, or run feature importance")
+    parser.add_argument("mode", nargs="?", default="run", choices=["run", "analyze", "edge", "feature", "morning", "validate"],
+                        help="run the signal generator, analyze saved results, test edge accuracy, run feature importance, execute morning automation, or print validation metrics")
+    parser.add_argument("--export-json", dest="export_json", default="",
+                        help="when mode is validate, optionally write summary metrics JSON to this path")
+    parser.add_argument("--backfill-journal", action="store_true",
+                        help="when mode is validate, append missing journal rows from openedge_db.csv without overwriting existing entries")
+    parser.add_argument("--dedupe-journal", action="store_true",
+                        help="when mode is validate, deduplicate research_journal.csv by date and keep the latest row for each date")
+    parser.add_argument("--dedupe-mode", choices=["date", "date-bias"], default="date",
+                        help="when --dedupe-journal is set, choose dedupe key strategy")
     args = parser.parse_args()
 
     if args.mode == "analyze":
         analyze()
+    elif args.mode == "morning":
+        MorningWorkflow().run()
+    elif args.mode == "validate":
+        validate(
+            export_json=args.export_json,
+            backfill_journal=args.backfill_journal,
+            dedupe_journal=args.dedupe_journal,
+            dedupe_mode=args.dedupe_mode,
+        )
     elif args.mode == "edge":
         if not DB_FILE.exists():
             print("No dataset found yet.")
@@ -602,6 +623,46 @@ def score_to_prob(score):
         return {"UP": 0.35, "DOWN": 0.65}
     else:
         return {"UP": 0.5, "DOWN": 0.5}
+
+
+def validate(
+    export_json: str = "",
+    backfill_journal: bool = False,
+    dedupe_journal: bool = False,
+    dedupe_mode: str = "date",
+):
+    journal_path = BASE_DIR / "research_journal.csv"
+    if backfill_journal:
+        added = backfill_from_db(DB_FILE, journal_path, reports_dir=REPORTS_DIR)
+        print(f"Backfill appended {added} journal row(s).")
+    if dedupe_journal:
+        removed = dedupe_entries(journal_path, mode=dedupe_mode)
+        print(f"Dedupe ({dedupe_mode}) removed {removed} duplicate journal row(s).")
+
+    engine = ValidationEngine(db_path=DB_FILE, journal_path=BASE_DIR / "research_journal.csv", reports_dir=REPORTS_DIR)
+    metrics = engine.summary_metrics()
+
+    print("\n========================")
+    print("OPENEDGE VALIDATION")
+    print("========================")
+    print(f"Total Signals: {metrics['total_signals']}")
+    print(f"Correct Signals: {metrics['correct_signals']}")
+    print(f"Incorrect Signals: {metrics['incorrect_signals']}")
+    print(f"Overall Accuracy: {metrics['overall_accuracy']:.2f}%")
+    print(f"Rolling 20-session Accuracy: {float(metrics['rolling_20_accuracy']):.2f}%")
+    print(f"Rolling 50-session Accuracy (if available): {float(metrics['rolling_50_accuracy']):.2f}%")
+    print(f"Average Confidence: {float(metrics['average_confidence']):.2f}")
+    print(f"Best Performing Regime: {metrics['best_performing_regime']}")
+    print(f"Worst Performing Regime: {metrics['worst_performing_regime']}")
+    print(f"Average Historical Similarity: {float(metrics['average_historical_similarity']):.2f}%")
+
+    if export_json:
+        output_path = Path(export_json)
+        if not output_path.is_absolute():
+            output_path = BASE_DIR / output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+        print(f"Validation metrics exported to: {output_path}")
 
 
 if __name__ == "__main__":

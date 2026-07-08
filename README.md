@@ -17,6 +17,53 @@ OPENEDGE is designed for research workflows and does not provide financial advic
 - AI Research Writer
 - Markdown report generation in reports/
 
+## Research Validation
+
+OPENEDGE includes an independent validation module in openedge/validation that evaluates research signal quality without changing any research calculations or the Intelligence Engine.
+
+Run validation from the CLI:
+
+```bash
+python openedge.py validate
+```
+
+Validation metrics include:
+- Total Signals
+- Correct Signals
+- Incorrect Signals
+- Overall Accuracy
+- Rolling 20-session Accuracy
+- Rolling 50-session Accuracy (if available)
+- Average Confidence
+- Best Performing Regime
+- Worst Performing Regime
+- Average Historical Similarity
+
+## Journal
+
+Validation uses research_journal.csv for session-level tracking with append-only behavior.
+
+Journal schema:
+
+```text
+date,market_regime,bias,confidence,actual,correct,notes
+```
+
+Helper APIs are available in openedge.validation.journal:
+- append_entry()
+- load_entries()
+- save_entry()
+
+## Performance Metrics
+
+The dashboard Research Validation section provides:
+- KPI cards for validation summary metrics
+- Rolling Accuracy line chart
+- Accuracy by Regime bar chart
+- Confidence Band Accuracy bar chart
+
+When no records are available, the dashboard shows a no-data prompt until morning workflow sessions populate the dataset and journal.
+
 ## Architecture
 
 OPENEDGE is organized into package modules:
@@ -34,7 +81,15 @@ flowchart TD
   B --> C[Dashboard]
 ```
 
-The service-oriented `IntelligenceEngine` centralizes market regime, risk level, confidence, opening style, opportunity score, strengths, weaknesses, key risks, focus, and summary generation into a deterministic report object consumed by the dashboard.
+The Sprint 8 enterprise architecture routes all market reasoning through a single deterministic `IntelligenceEngine`.
+The dashboard is a presentation layer that only displays values from `engine.build_report()`, preserving a clear separation between analysis and UI.
+
+Intelligence Engine responsibilities include:
+- market regime classification
+- confidence, opening risk, and opportunity scoring
+- directional bias and opening style
+- strengths, weaknesses, key risks, and focus generation
+- system status, macro, leadership, historical, and performance report payloads
 
 See docs/architecture.md for more details.
 
@@ -112,4 +167,5 @@ MIT License. See LICENSE.
 ## Disclaimer
 
 OPENEDGE is a market research platform. It does not provide investment advice.
+All outputs are for research and educational use only.
 
