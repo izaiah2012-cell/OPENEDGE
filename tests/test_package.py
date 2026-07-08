@@ -7,6 +7,7 @@ import openedge
 import openedge.analytics.explanation as explanation_module
 import openedge.dashboard.app as dashboard_app
 import openedge.data.market as market_module
+import openedge.engines.history_engine as history_module
 import openedge.engines.macro_engine as macro_module
 
 
@@ -25,6 +26,7 @@ def test_package_imports_work():
     assert market_module is not None
     assert explanation_module is not None
     assert macro_module is not None
+    assert history_module is not None
 
 
 def test_csv_is_located_from_project_root():
@@ -92,6 +94,20 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         lambda: [{"time": "08:30 ET", "event": "CPI", "impact": "High"}],
     )
     monkeypatch.setattr(dashboard_app, "calculate_macro_risk", lambda events: "MEDIUM")
+    monkeypatch.setattr(
+        dashboard_app,
+        "get_historical_matches",
+        lambda: [{"rank": 1, "date": "2024-01-01", "similarity": 87.5, "bias": "UP", "actual": "UP", "correct": 1}],
+    )
+    monkeypatch.setattr(
+        dashboard_app,
+        "summarize_historical_matches",
+        lambda matches: {
+            "most_similar_session": "2024-01-01 (87.50%)",
+            "average_similarity": 87.5,
+            "most_common_outcome": "UP",
+        },
+    )
     monkeypatch.setattr(
         dashboard_app,
         "evaluate_sector_leadership",

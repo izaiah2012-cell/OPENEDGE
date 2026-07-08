@@ -5,6 +5,10 @@ import pandas as pd
 import streamlit as st
 
 from openedge.analytics import explain
+from openedge.engines.history_engine import (
+    get_historical_matches,
+    summarize_historical_matches,
+)
 from openedge.data.market import get_market_snapshot
 from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
 from openedge.models.score_engine import (
@@ -200,6 +204,32 @@ def format_macro_risk(risk):
     return ":red[HIGH]"
 
 
+def historical_match_table(matches):
+    if not matches:
+        return pd.DataFrame(columns=["Rank", "Date", "Similarity %", "Bias", "Actual", "Correct"])
+
+    frame = pd.DataFrame(
+        [
+            {
+                "Rank": match.get("rank"),
+                "Date": match.get("date"),
+                "Similarity %": match.get("similarity"),
+                "Bias": match.get("bias"),
+                "Actual": match.get("actual"),
+                "Correct": match.get("correct"),
+            }
+            for match in matches
+        ]
+    )
+
+    def highlight_best(row):
+        if row["Rank"] == 1:
+            return ["background-color: #ecfdf5; font-weight: 700;"] * len(row)
+        return [""] * len(row)
+
+    return frame.style.apply(highlight_best, axis=1)
+
+
 def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
     st.title("📈 OPENEDGE")
@@ -212,6 +242,8 @@ def main():
     regime = classify_market_regime(snapshot)
     macro_events = get_macro_events()
     macro_risk = calculate_macro_risk(macro_events)
+    historical_matches = get_historical_matches()
+    historical_summary = summarize_historical_matches(historical_matches)
     leadership, leadership_fetched_at, used_fallback = get_leadership_with_fallback()
     latest_signal = load_latest_signal()
     history_df = load_signal_history()
@@ -262,6 +294,17 @@ def main():
             st.write(explain(latest_signal))
     else:
         st.info("No signal history is available yet. Run the analysis workflow to populate the database.")
+
+    st.header("Historical Match")
+    if historical_matches:
+        st.dataframe(historical_match_table(historical_matches), hide_index=True, width="stretch")
+    else:
+        st.info("Not enough completed history to compute matches yet.")
+
+    h1, h2, h3 = st.columns(3)
+    h1.metric("Most Similar Session", historical_summary["most_similar_session"])
+    h2.metric("Average Similarity", f"{historical_summary['average_similarity']:.2f}%")
+    h3.metric("Most Common Outcome", historical_summary["most_common_outcome"])
 
     st.header("Performance")
     if history_df is not None and "correct" in history_df.columns:
