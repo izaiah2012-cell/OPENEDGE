@@ -1,6 +1,6 @@
-Workflow Start: 2026-07-08T19:57:26.959323+00:00
-Workflow Finish: 2026-07-08T19:57:31.358581+00:00
-Duration: 4.4s
+Workflow Start: 2026-07-08T20:13:04.494462+00:00
+Workflow Finish: 2026-07-08T20:13:09.139041+00:00
+Duration: 4.64s
 Data Sources:
 - openedge.data.market.get_market_snapshot
 - openedge.engines.macro_engine.get_macro_events

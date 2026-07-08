@@ -117,6 +117,46 @@ def load_entries(path: Path) -> pd.DataFrame:
     return frame[JOURNAL_FIELDS]
 
 
+def update_notes(path: Path, *, date: str, notes: str, bias: str | None = None) -> Path:
+    # Append-only note updates: clone latest matching entry and append with updated notes.
+    entries = load_entries(path)
+    if entries.empty:
+        return append_entry(
+            path,
+            {
+                "date": date,
+                "market_regime": "Neutral",
+                "bias": bias or "",
+                "confidence": "",
+                "actual": "",
+                "correct": "",
+                "notes": notes,
+            },
+        )
+
+    matches = entries[entries["date"].astype(str) == str(date)]
+    if bias is not None:
+        matches = matches[matches["bias"].astype(str) == str(bias)]
+
+    if matches.empty:
+        return append_entry(
+            path,
+            {
+                "date": date,
+                "market_regime": "Neutral",
+                "bias": bias or "",
+                "confidence": "",
+                "actual": "",
+                "correct": "",
+                "notes": notes,
+            },
+        )
+
+    latest = matches.iloc[-1].to_dict()
+    latest["notes"] = notes
+    return append_entry(path, latest)
+
+
 def backfill_from_db(db_path: Path, journal_path: Path, reports_dir: Path | None = None) -> int:
     db_path = Path(db_path)
     if not db_path.exists():

@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from openedge.validation.journal import JOURNAL_FIELDS, load_entries
-from openedge.validation.metrics import accuracy_percent, confidence_band, regime_from_bias_and_vix
+from openedge.validation.calibration import build_confidence_calibration, confidence_to_band
+from openedge.validation.journal import load_entries
+from openedge.validation.metrics import accuracy_percent, regime_from_bias_and_vix
 
 
 class ValidationEngine:
@@ -60,7 +61,7 @@ class ValidationEngine:
             frame["confidence"] = pd.NA
 
         frame["confidence"] = pd.to_numeric(frame.get("confidence"), errors="coerce")
-        frame["confidence_band"] = frame.get("confidence", pd.Series(dtype=float)).map(confidence_band)
+        frame["confidence_band"] = frame.get("confidence", pd.Series(dtype=float)).map(confidence_to_band)
         frame["month"] = pd.to_datetime(frame["date"], errors="coerce").dt.to_period("M").astype(str)
         return frame
 
@@ -99,7 +100,7 @@ class ValidationEngine:
         latest = points[-1]["accuracy"] if points else None
         return {"window": window, "latest_accuracy": latest, "points": points}
 
-    def accuracy_by_regime(self) -> dict:
+    def accuracy_by_market_regime(self) -> dict:
         frame = self._load()
         if frame.empty:
             return {"items": [], "best_regime": "N/A", "worst_regime": "N/A"}
@@ -121,23 +122,27 @@ class ValidationEngine:
             "worst_regime": sorted_items[-1]["regime"],
         }
 
+    # Backward-compatible alias.
+    def accuracy_by_regime(self) -> dict:
+        return self.accuracy_by_market_regime()
+
     def accuracy_by_confidence_band(self) -> dict:
         frame = self._load()
         if frame.empty:
             return {"items": []}
 
-        grouped = frame.dropna(subset=["correct"]).groupby("confidence_band").agg(
-            sessions=("correct", "count"),
-            accuracy=("correct", "mean"),
-            average_confidence=("confidence", "mean"),
-        )
-        if grouped.empty:
-            return {"items": []}
-
-        grouped["accuracy"] = (grouped["accuracy"] * 100.0).round(2)
-        grouped["average_confidence"] = grouped["average_confidence"].round(2)
-        grouped = grouped.reset_index().rename(columns={"confidence_band": "band"})
-        return {"items": grouped.to_dict(orient="records")}
+        calibration = self.confidence_calibration()
+        return {
+            "items": [
+                {
+                    "band": row["band"],
+                    "sessions": row["signals"],
+                    "accuracy": row["accuracy_percent"],
+                    "average_confidence": None,
+                }
+                for row in calibration.get("items", [])
+            ]
+        }
 
     def accuracy_by_bias(self) -> dict:
         frame = self._load()
@@ -173,27 +178,53 @@ class ValidationEngine:
         return {"items": grouped.to_dict(orient="records")}
 
     def confidence_calibration(self) -> dict:
-        bands = self.accuracy_by_confidence_band().get("items", [])
-        overall_confidence = self._load().get("confidence", pd.Series(dtype=float)).dropna()
+        frame = self._load()
+        return build_confidence_calibration(frame)
+
+    def historical_similarity_accuracy(self) -> dict:
+        db = self._load()
+        similarities = []
+
+        if self.reports_dir.exists():
+            for file_path in sorted(self.reports_dir.glob("*.json")):
+                try:
+                    payload = json.loads(file_path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+
+                date_value = str(payload.get("Date") or "")
+                similarity = payload.get("Raw Engine Report", {}).get("historical", {}).get("average_similarity")
+                if not date_value or similarity is None:
+                    continue
+
+                rows = db[db["date"].astype(str) == date_value]
+                correct = rows.iloc[-1]["correct"] if not rows.empty else pd.NA
+                similarities.append(
+                    {
+                        "date": date_value,
+                        "average_similarity": float(similarity),
+                        "correct": None if pd.isna(correct) else int(float(correct)),
+                    }
+                )
+
+        if not similarities:
+            return {"items": [], "average_similarity": 0.0, "accuracy_percent": 0.0}
+
+        frame = pd.DataFrame(similarities)
+        valid = frame.dropna(subset=["correct"])
+        accuracy = accuracy_percent(valid["correct"]) if not valid.empty else 0.0
         return {
-            "average_confidence": round(float(overall_confidence.mean()), 2) if not overall_confidence.empty else 0.0,
-            "items": [
-                {
-                    "band": row.get("band", "Unknown"),
-                    "expected_confidence": row.get("average_confidence", 0.0),
-                    "realized_accuracy": row.get("accuracy", 0.0),
-                    "sessions": row.get("sessions", 0),
-                }
-                for row in bands
-            ],
+            "items": similarities,
+            "average_similarity": round(float(frame["average_similarity"].mean()), 2),
+            "accuracy_percent": accuracy,
         }
 
-    def summary_metrics(self) -> dict:
+    def summary(self) -> dict:
         overall = self.overall_accuracy()
         roll20 = self.rolling_accuracy(20)
-        roll50 = self.rolling_accuracy(50)
-        regimes = self.accuracy_by_regime()
+        regimes = self.accuracy_by_market_regime()
         calibration = self.confidence_calibration()
+        similarity = self.historical_similarity_accuracy()
 
         return {
             "total_signals": overall["total_signals"],
@@ -201,12 +232,15 @@ class ValidationEngine:
             "incorrect_signals": overall["incorrect_signals"],
             "overall_accuracy": overall["overall_accuracy"],
             "rolling_20_accuracy": roll20.get("latest_accuracy") or 0.0,
-            "rolling_50_accuracy": roll50.get("latest_accuracy") or 0.0,
             "average_confidence": calibration.get("average_confidence", 0.0),
             "best_performing_regime": regimes.get("best_regime", "N/A"),
             "worst_performing_regime": regimes.get("worst_regime", "N/A"),
-            "average_historical_similarity": self._average_historical_similarity(),
+            "average_historical_similarity": similarity.get("average_similarity", 0.0),
         }
+
+    # Backward-compatible alias.
+    def summary_metrics(self) -> dict:
+        return self.summary()
 
     def _average_historical_similarity(self) -> float:
         similarities = []

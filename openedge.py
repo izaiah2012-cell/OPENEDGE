@@ -640,21 +640,16 @@ def validate(
         print(f"Dedupe ({dedupe_mode}) removed {removed} duplicate journal row(s).")
 
     engine = ValidationEngine(db_path=DB_FILE, journal_path=BASE_DIR / "research_journal.csv", reports_dir=REPORTS_DIR)
-    metrics = engine.summary_metrics()
+    metrics = engine.summary()
 
     print("\n========================")
-    print("OPENEDGE VALIDATION")
+    print("Validation Summary")
     print("========================")
-    print(f"Total Signals: {metrics['total_signals']}")
-    print(f"Correct Signals: {metrics['correct_signals']}")
-    print(f"Incorrect Signals: {metrics['incorrect_signals']}")
     print(f"Overall Accuracy: {metrics['overall_accuracy']:.2f}%")
-    print(f"Rolling 20-session Accuracy: {float(metrics['rolling_20_accuracy']):.2f}%")
-    print(f"Rolling 50-session Accuracy (if available): {float(metrics['rolling_50_accuracy']):.2f}%")
+    print(f"Rolling Accuracy: {float(metrics['rolling_20_accuracy']):.2f}%")
+    print(f"Best Regime: {metrics['best_performing_regime']}")
+    print(f"Worst Regime: {metrics['worst_performing_regime']}")
     print(f"Average Confidence: {float(metrics['average_confidence']):.2f}")
-    print(f"Best Performing Regime: {metrics['best_performing_regime']}")
-    print(f"Worst Performing Regime: {metrics['worst_performing_regime']}")
-    print(f"Average Historical Similarity: {float(metrics['average_historical_similarity']):.2f}%")
 
     if export_json:
         output_path = Path(export_json)

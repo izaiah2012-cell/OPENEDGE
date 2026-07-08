@@ -39,7 +39,7 @@ Validation metrics include:
 - Worst Performing Regime
 - Average Historical Similarity
 
-## Journal
+## Research Journal
 
 Validation uses research_journal.csv for session-level tracking with append-only behavior.
 
@@ -60,7 +60,22 @@ The dashboard Research Validation section provides:
 - KPI cards for validation summary metrics
 - Rolling Accuracy line chart
 - Accuracy by Regime bar chart
-- Confidence Band Accuracy bar chart
+- Confidence Calibration bar chart
+- Monthly Accuracy bar chart
+
+## Confidence Calibration
+
+Calibration uses fixed confidence bands:
+- 90-100
+- 80-89
+- 70-79
+- 60-69
+- Below 60
+
+For each band OPENEDGE reports:
+- Signals
+- Correct
+- Accuracy %
 
 When no records are available, the dashboard shows a no-data prompt until morning workflow sessions populate the dataset and journal.
 

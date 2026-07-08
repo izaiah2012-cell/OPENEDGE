@@ -404,11 +404,12 @@ def main():
     render_section_header(st, "System Status")
     _render_system_status(st, summary.get("system_status", {}))
 
-    render_section_header(st, "📊 Research Validation")
-    validation_summary = validation_engine.summary_metrics()
+    render_section_header(st, "Research Validation")
+    validation_summary = validation_engine.summary()
     rolling_20 = validation_engine.rolling_accuracy(window=20)
-    by_regime = validation_engine.accuracy_by_regime().get("items", [])
-    by_confidence = validation_engine.accuracy_by_confidence_band().get("items", [])
+    by_regime = validation_engine.accuracy_by_market_regime().get("items", [])
+    confidence_calibration = validation_engine.confidence_calibration().get("items", [])
+    monthly = validation_engine.monthly_accuracy().get("items", [])
 
     v1, v2, v3, v4, v5 = st.columns(5)
     render_metric_card(v1, "Total Signals", validation_summary.get("total_signals", 0))
@@ -417,12 +418,11 @@ def main():
     render_metric_card(v4, "Overall Accuracy", f"{float(validation_summary.get('overall_accuracy', 0.0)):.2f}%")
     render_metric_card(v5, "Rolling 20-session Accuracy", f"{float(validation_summary.get('rolling_20_accuracy', 0.0)):.2f}%")
 
-    v6, v7, v8, v9, v10 = st.columns(5)
-    render_metric_card(v6, "Rolling 50-session Accuracy", f"{float(validation_summary.get('rolling_50_accuracy', 0.0)):.2f}%")
-    render_metric_card(v7, "Average Confidence", f"{float(validation_summary.get('average_confidence', 0.0)):.2f}")
-    render_metric_card(v8, "Best Regime", validation_summary.get("best_performing_regime", "N/A"))
-    render_metric_card(v9, "Worst Regime", validation_summary.get("worst_performing_regime", "N/A"))
-    render_metric_card(v10, "Avg Historical Similarity", f"{float(validation_summary.get('average_historical_similarity', 0.0)):.2f}%")
+    v6, v7, v8, v9 = st.columns(4)
+    render_metric_card(v6, "Average Confidence", f"{float(validation_summary.get('average_confidence', 0.0)):.2f}")
+    render_metric_card(v7, "Best Regime", validation_summary.get("best_performing_regime", "N/A"))
+    render_metric_card(v8, "Worst Regime", validation_summary.get("worst_performing_regime", "N/A"))
+    render_metric_card(v9, "Avg Historical Similarity", f"{float(validation_summary.get('average_historical_similarity', 0.0)):.2f}%")
 
     if not rolling_20.get("points"):
         st.info("No validation records available yet. Run morning sessions to populate performance charts.")
@@ -455,17 +455,29 @@ def main():
     else:
         st.info("No regime-level accuracy data available yet.")
 
-    st.markdown("**Confidence Band Accuracy**")
-    if by_confidence:
-        confidence_frame = pd.DataFrame(by_confidence)
+    st.markdown("**Confidence Calibration**")
+    if confidence_calibration:
+        confidence_frame = pd.DataFrame(confidence_calibration)
         if go is None:
             st.dataframe(confidence_frame, hide_index=True, width="stretch")
         else:
-            fig = go.Figure(go.Bar(x=confidence_frame["band"], y=confidence_frame["accuracy"], marker_color="#f59e0b"))
+            fig = go.Figure(go.Bar(x=confidence_frame["band"], y=confidence_frame["accuracy_percent"], marker_color="#f59e0b"))
             fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
             _safe_plotly_chart(st, fig)
     else:
         st.info("No confidence band records available yet.")
+
+    st.markdown("**Monthly Accuracy**")
+    if monthly:
+        monthly_frame = pd.DataFrame(monthly)
+        if go is None:
+            st.dataframe(monthly_frame, hide_index=True, width="stretch")
+        else:
+            fig = go.Figure(go.Bar(x=monthly_frame["month"], y=monthly_frame["accuracy"], marker_color="#6366f1"))
+            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+            _safe_plotly_chart(st, fig)
+    else:
+        st.info("No monthly validation data available yet.")
 
     render_section_header(st, "Today's Decision", "Executive snapshot for the pre-market session")
     decision_cells = [

@@ -1,6 +1,6 @@
 {
   "Date": "2026-07-08",
-  "Timestamp": "2026-07-08T19:57:26.959288+00:00",
+  "Timestamp": "2026-07-08T20:13:04.494405+00:00",
   "Market Regime": "Risk Off",
   "Confidence": 67,
   "Bias": "BEARISH",
@@ -10,26 +10,26 @@
   "Market Internals": [
     {
       "Asset": "SPY",
-      "Price": "745.92",
-      "Daily %": "-0.24%",
+      "Price": "745.32",
+      "Daily %": "-0.32%",
       "Direction": "DOWN"
     },
     {
       "Asset": "QQQ",
-      "Price": "711.93",
-      "Daily %": "+0.35%",
+      "Price": "711.44",
+      "Daily %": "+0.28%",
       "Direction": "UP"
     },
     {
       "Asset": "DIA",
-      "Price": "522.89",
-      "Daily %": "-1.05%",
+      "Price": "522.82",
+      "Daily %": "-1.07%",
       "Direction": "DOWN"
     },
     {
       "Asset": "VIX",
-      "Price": "16.85",
-      "Daily %": "+4.46%",
+      "Price": "16.58",
+      "Daily %": "+2.79%",
       "Direction": "UP"
     },
     {
@@ -40,64 +40,64 @@
     },
     {
       "Asset": "DXY",
-      "Price": "100.99",
-      "Daily %": "-0.15%",
+      "Price": "100.98",
+      "Daily %": "-0.16%",
       "Direction": "DOWN"
     },
     {
       "Asset": "Gold",
-      "Price": "4,091.20",
-      "Daily %": "-1.31%",
+      "Price": "4,089.30",
+      "Daily %": "-1.35%",
       "Direction": "DOWN"
     },
     {
       "Asset": "Oil",
-      "Price": "74.17",
-      "Daily %": "+5.30%",
+      "Price": "74.20",
+      "Daily %": "+5.34%",
       "Direction": "UP"
     },
     {
       "Asset": "Bitcoin",
-      "Price": "62,150.00",
-      "Daily %": "-1.81%",
+      "Price": "62,185.89",
+      "Daily %": "-1.76%",
       "Direction": "DOWN"
     },
     {
       "Asset": "IWM",
-      "Price": "293.83",
-      "Daily %": "-0.80%",
+      "Price": "293.53",
+      "Daily %": "-0.90%",
       "Direction": "DOWN"
     }
   ],
   "Leadership": {
     "Technology": {
-      "score": 1.11,
-      "momentum_5d": 4.43,
+      "score": 1.04,
+      "momentum_5d": 4.36,
       "status": "Strong"
     },
     "Financials": {
-      "score": -2.18,
-      "momentum_5d": 1.81,
+      "score": -2.16,
+      "momentum_5d": 1.84,
       "status": "Weak"
     },
     "Industrials": {
-      "score": -0.71,
-      "momentum_5d": -6.08,
+      "score": -0.82,
+      "momentum_5d": -6.19,
       "status": "Neutral"
     },
     "Healthcare": {
-      "score": -1.13,
-      "momentum_5d": 2.58,
+      "score": -1.22,
+      "momentum_5d": 2.48,
       "status": "Weak"
     },
     "Consumer": {
-      "score": 0.4,
-      "momentum_5d": 1.37,
+      "score": 0.34,
+      "momentum_5d": 1.32,
       "status": "Neutral"
     },
     "Energy": {
-      "score": 0.27,
-      "momentum_5d": 4.59,
+      "score": 0.29,
+      "momentum_5d": 4.61,
       "status": "Neutral"
     }
   },
@@ -327,26 +327,26 @@
       "internals_rows": [
         {
           "Asset": "SPY",
-          "Price": "745.92",
-          "Daily %": "-0.24%",
+          "Price": "745.32",
+          "Daily %": "-0.32%",
           "Direction": "DOWN"
         },
         {
           "Asset": "QQQ",
-          "Price": "711.93",
-          "Daily %": "+0.35%",
+          "Price": "711.44",
+          "Daily %": "+0.28%",
           "Direction": "UP"
         },
         {
           "Asset": "DIA",
-          "Price": "522.89",
-          "Daily %": "-1.05%",
+          "Price": "522.82",
+          "Daily %": "-1.07%",
           "Direction": "DOWN"
         },
         {
           "Asset": "VIX",
-          "Price": "16.85",
-          "Daily %": "+4.46%",
+          "Price": "16.58",
+          "Daily %": "+2.79%",
           "Direction": "UP"
         },
         {
@@ -357,36 +357,36 @@
         },
         {
           "Asset": "DXY",
-          "Price": "100.99",
-          "Daily %": "-0.15%",
+          "Price": "100.98",
+          "Daily %": "-0.16%",
           "Direction": "DOWN"
         },
         {
           "Asset": "Gold",
-          "Price": "4,091.20",
-          "Daily %": "-1.31%",
+          "Price": "4,089.30",
+          "Daily %": "-1.35%",
           "Direction": "DOWN"
         },
         {
           "Asset": "Oil",
-          "Price": "74.17",
-          "Daily %": "+5.30%",
+          "Price": "74.20",
+          "Daily %": "+5.34%",
           "Direction": "UP"
         },
         {
           "Asset": "Bitcoin",
-          "Price": "62,150.00",
-          "Daily %": "-1.81%",
+          "Price": "62,185.89",
+          "Daily %": "-1.76%",
           "Direction": "DOWN"
         },
         {
           "Asset": "IWM",
-          "Price": "293.83",
-          "Daily %": "-0.80%",
+          "Price": "293.53",
+          "Daily %": "-0.90%",
           "Direction": "DOWN"
         }
       ],
-      "internals_summary": "Overnight internals show 4 assets up and 6 down, with 0 temporarily unavailable. The average move across available assets is +0.56%, suggesting risk appetite leaning constructive. Cross-asset direction should be monitored alongside early U.S. cash-session participation for confirmation."
+      "internals_summary": "Overnight internals show 4 assets up and 6 down, with 0 temporarily unavailable. The average move across available assets is +0.37%, suggesting risk appetite leaning constructive. Cross-asset direction should be monitored alongside early U.S. cash-session participation for confirmation."
     },
     "macro": {
       "macro_risk": "MEDIUM",
@@ -408,49 +408,49 @@
       "strongest_sector": {
         "sector": "Technology",
         "status": "Strong",
-        "score": 1.11
+        "score": 1.04
       },
       "weakest_sector": {
         "sector": "Financials",
         "status": "Weak",
-        "score": -2.18
+        "score": -2.16
       },
       "sector_summary": "Leadership is led by Technology (Strong) while Financials is the weakest pocket (Weak).",
       "rows": [
         {
           "Sector": "Technology",
-          "Score (%)": 1.11,
-          "5D Momentum (%)": 4.43,
+          "Score (%)": 1.04,
+          "5D Momentum (%)": 4.36,
           "Status": "Strong"
         },
         {
           "Sector": "Financials",
-          "Score (%)": -2.18,
-          "5D Momentum (%)": 1.81,
+          "Score (%)": -2.16,
+          "5D Momentum (%)": 1.84,
           "Status": "Weak"
         },
         {
           "Sector": "Industrials",
-          "Score (%)": -0.71,
-          "5D Momentum (%)": -6.08,
+          "Score (%)": -0.82,
+          "5D Momentum (%)": -6.19,
           "Status": "Neutral"
         },
         {
           "Sector": "Healthcare",
-          "Score (%)": -1.13,
-          "5D Momentum (%)": 2.58,
+          "Score (%)": -1.22,
+          "5D Momentum (%)": 2.48,
           "Status": "Weak"
         },
         {
           "Sector": "Consumer",
-          "Score (%)": 0.4,
-          "5D Momentum (%)": 1.37,
+          "Score (%)": 0.34,
+          "5D Momentum (%)": 1.32,
           "Status": "Neutral"
         },
         {
           "Sector": "Energy",
-          "Score (%)": 0.27,
-          "5D Momentum (%)": 4.59,
+          "Score (%)": 0.29,
+          "5D Momentum (%)": 4.61,
           "Status": "Neutral"
         }
       ]
