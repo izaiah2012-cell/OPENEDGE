@@ -8,7 +8,7 @@ from openedge.analytics import explain
 from openedge.engines.history_engine import get_historical_matches
 from openedge.data.market import get_market_snapshot
 from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
-from openedge.engines.market_internals import get_market_internals
+from openedge.engines.market_internals import get_market_internals, summarize_market_internals
 from openedge.engines.research_writer import generate_research_summary
 from openedge.models.score_engine import (
     market_bias,
@@ -164,26 +164,27 @@ Daily Change: {change_text}
 """
 
 
-def market_internals_table(internals, fetched_at):
+def market_internals_table(internals):
     if not internals:
-        return pd.DataFrame(columns=["Asset", "Price", "Daily Change", "Direction", "Status", "Last Updated"])
-
-    last_updated = fetched_at.strftime("%H:%M:%S")
+        return pd.DataFrame(columns=["Asset", "Price", "Daily %", "Direction"])
 
     rows = []
     for asset, values in internals.items():
         price = values.get("price")
-        daily_change = values.get("daily_change")
+        daily_change = values.get("daily_change_percent")
         direction = values.get("direction", "N/A")
-        status = "Live" if direction != "N/A" else "Unavailable"
+        if daily_change is None:
+            daily_change_text = "N/A"
+        elif abs(daily_change) < 1e-12:
+            daily_change_text = "0.00%"
+        else:
+            daily_change_text = f"{daily_change:+.2f}%"
         rows.append(
             {
                 "Asset": asset,
                 "Price": "N/A" if price is None else f"{price:,.2f}",
-                "Daily Change": "N/A" if daily_change is None else f"{daily_change:+.2f}%",
+                "Daily %": daily_change_text,
                 "Direction": direction,
-                "Status": status,
-                "Last Updated": last_updated,
             }
         )
 
@@ -194,8 +195,6 @@ def market_internals_table(internals, fetched_at):
             return "color: #15803d; font-weight: 700;"
         if value == "DOWN":
             return "color: #b91c1c; font-weight: 700;"
-        if value == "FLAT":
-            return "color: #d97706; font-weight: 700;"
         return "color: #94a3b8;"
 
     def style_change(value):
@@ -207,16 +206,10 @@ def market_internals_table(internals, fetched_at):
             return "color: #b91c1c; font-weight: 700;"
         return "color: #d97706; font-weight: 700;"
 
-    def style_status(value):
-        if value == "Live":
-            return "color: #15803d; font-weight: 700;"
-        return "color: #b91c1c; font-weight: 700;"
-
     return (
         frame.style
-        .map(style_change, subset=["Daily Change"])
+        .map(style_change, subset=["Daily %"])
         .map(style_direction, subset=["Direction"])
-        .map(style_status, subset=["Status"])
     )
 
 
@@ -474,7 +467,9 @@ def main():
 
     with st.container(border=True):
         st.header("Market Internals")
-        st.dataframe(market_internals_table(market_internals, internals_fetched_at), hide_index=True, width="stretch")
+        st.dataframe(market_internals_table(market_internals), hide_index=True, width="stretch")
+        st.caption(f"Last updated: {internals_fetched_at.strftime('%H:%M:%S')}")
+        st.info(summarize_market_internals(market_internals))
 
     with st.container(border=True):
         st.header("Morning Brief")

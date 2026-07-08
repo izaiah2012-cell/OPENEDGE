@@ -19,7 +19,7 @@ def test_get_market_internals_returns_expected_shape(monkeypatch):
     result = market_internals.get_market_internals()
 
     assert "SPY" in result
-    assert set(result["SPY"].keys()) == {"price", "daily_change", "direction"}
+    assert set(result["SPY"].keys()) == {"price", "daily_change_percent", "direction"}
     assert result["SPY"]["direction"] == "UP"
 
 
@@ -29,5 +29,18 @@ def test_get_market_internals_handles_provider_failure(monkeypatch):
     result = market_internals.get_market_internals()
 
     assert result["SPY"]["price"] is None
-    assert result["SPY"]["daily_change"] is None
+    assert result["SPY"]["daily_change_percent"] is None
     assert result["SPY"]["direction"] == "N/A"
+
+
+def test_summarize_market_internals_returns_text():
+    internals = {
+        "SPY": {"price": 615.2, "daily_change_percent": 0.42, "direction": "UP"},
+        "QQQ": {"price": 532.1, "daily_change_percent": -0.15, "direction": "DOWN"},
+        "VIX": {"price": 14.8, "daily_change_percent": 0.00, "direction": "UP"},
+    }
+
+    summary = market_internals.summarize_market_internals(internals)
+
+    assert isinstance(summary, str)
+    assert len(summary.split(".")) >= 3
