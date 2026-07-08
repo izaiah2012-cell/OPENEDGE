@@ -1,168 +1,206 @@
 from __future__ import annotations
 
-
-def _infer_market_regime(bias, internals):
-    vix_direction = internals.get("VIX", {}).get("direction", "N/A")
-    if bias == "BULLISH" and vix_direction != "UP":
-        return "Risk On"
-    if bias == "BEARISH" or vix_direction == "UP":
-        return "Risk Off"
-    return "Balanced"
+from openedge.models.score_engine import market_bias, opening_auction_risk, opportunity_score
 
 
-def _infer_opening_style(opening_auction_risk, market_regime):
-    if opening_auction_risk >= 7:
-        return "Defensive Open"
-    if market_regime == "Risk On" and opening_auction_risk <= 5:
-        return "Trend Open"
-    return "Neutral Open"
+class IntelligenceEngine:
+    """Deterministic service that composes OPENEDGE morning intelligence."""
 
+    def __init__(
+        self,
+        market_snapshot,
+        market_internals,
+        leadership,
+        macro_events,
+        historical_match,
+        latest_signal,
+    ):
+        self.market_snapshot = market_snapshot or {}
+        self.market_internals = market_internals or {}
+        self.leadership = leadership or {}
+        self.macro_events = macro_events or []
+        self.historical_match = historical_match or {}
+        self.latest_signal = latest_signal or {}
 
-def _highest_probability(bias, historical_result):
-    common_outcome = historical_result.get("most_common_outcome", "N/A")
-    if common_outcome not in ("N/A", "", None):
-        return common_outcome
-    return bias
+    def _calculate_bias(self):
+        bias, _ = market_bias(self.market_snapshot)
+        return bias
 
+    def _historical_confidence_band(self):
+        return self.historical_match.get("best_match", {}).get("confidence_band", "Weak")
 
-def _base_risk_level(macro_risk):
-    if macro_risk in ("LOW", "MEDIUM", "HIGH"):
-        return macro_risk
-    return "MEDIUM"
+    def _highest_probability(self, bias):
+        common_outcome = self.historical_match.get("most_common_outcome", "N/A")
+        if common_outcome not in (None, "", "N/A"):
+            return common_outcome
 
+        actual = self.latest_signal.get("actual") if isinstance(self.latest_signal, dict) else None
+        if actual not in (None, "", "N/A"):
+            return actual
 
-def _elevate_risk(risk_level):
-    if risk_level == "LOW":
-        return "MEDIUM"
-    return "HIGH"
+        return bias
 
+    def calculate_market_regime(self):
+        bias = self._calculate_bias()
+        vix_snapshot_change = self.market_snapshot.get("VIX", {}).get("change")
+        vix_internal_direction = self.market_internals.get("VIX", {}).get("direction", "N/A")
 
-def _reduce_risk(risk_level):
-    if risk_level == "HIGH":
-        return "MEDIUM"
-    return "LOW"
+        vix_expanding = (vix_snapshot_change is not None and float(vix_snapshot_change) >= 2.0) or vix_internal_direction == "UP"
 
+        if bias == "BULLISH" and not vix_expanding:
+            return "Risk On"
+        if bias == "BEARISH" or vix_expanding:
+            return "Risk Off"
+        return "Balanced"
 
-def _risk_from_conditions(macro_risk, opening_auction_risk, bias, internals, leadership):
-    risk_level = _base_risk_level(macro_risk)
+    def calculate_risk_level(self):
+        high_impact = sum(1 for event in self.macro_events if str(event.get("impact", "")).upper() == "HIGH")
+        medium_impact = sum(1 for event in self.macro_events if str(event.get("impact", "")).upper() == "MEDIUM")
 
-    vix_direction = internals.get("VIX", {}).get("direction", "N/A")
-    strong_count = sum(1 for values in leadership.values() if values.get("status") == "Strong")
-    weak_count = sum(1 for values in leadership.values() if values.get("status") == "Weak")
+        score = (high_impact * 3) + (medium_impact * 2)
 
-    if opening_auction_risk >= 7 or vix_direction == "UP":
-        risk_level = _elevate_risk(risk_level)
+        weak_count = sum(1 for values in self.leadership.values() if values.get("status") == "Weak")
+        strong_count = sum(1 for values in self.leadership.values() if values.get("status") == "Strong")
 
-    if bias == "BEARISH" and weak_count >= max(2, strong_count):
-        risk_level = _elevate_risk(risk_level)
+        if weak_count >= max(2, strong_count + 1):
+            score += 2
 
-    if bias == "BULLISH" and strong_count >= max(2, weak_count + 1) and opening_auction_risk <= 5:
-        risk_level = _reduce_risk(risk_level)
+        vix_direction = self.market_internals.get("VIX", {}).get("direction", "N/A")
+        if vix_direction == "UP":
+            score += 2
 
-    return risk_level
+        if score <= 2:
+            return "LOW"
+        if score <= 5:
+            return "MEDIUM"
+        return "HIGH"
 
+    def calculate_confidence(self):
+        _, base_confidence = market_bias(self.market_snapshot)
+        confidence = int(base_confidence)
 
-def _strengths(bias, leadership, historical_result, internals):
-    strengths = []
-    strong_sectors = [name for name, values in leadership.items() if values.get("status") == "Strong"]
-    if bias == "BULLISH":
-        strengths.append("Broad upside bias in core index signals")
-    if strong_sectors:
-        strengths.append(f"Leadership support from {', '.join(strong_sectors[:2])}")
+        band = self._historical_confidence_band()
+        if band == "Strong":
+            confidence += 8
+        elif band == "Moderate":
+            confidence += 4
 
-    band = historical_result.get("best_match", {}).get("confidence_band", "")
-    if band == "Strong":
-        strengths.append("Historical analog confidence is strong")
+        risk_level = self.calculate_risk_level()
+        if risk_level == "HIGH":
+            confidence -= 6
+        elif risk_level == "LOW":
+            confidence += 3
 
-    if internals.get("VIX", {}).get("direction") == "DOWN":
-        strengths.append("Volatility pressure is easing")
+        return max(0, min(100, confidence))
 
-    return strengths[:3] or ["No clear structural strength identified"]
+    def calculate_opening_style(self):
+        oar = opening_auction_risk(self.market_snapshot)
+        regime = self.calculate_market_regime()
 
+        if oar >= 7:
+            return "Defensive Open"
+        if regime == "Risk On" and oar <= 5:
+            return "Trend Open"
+        return "Neutral Open"
 
-def _weaknesses(bias, leadership, internals):
-    weaknesses = []
-    weak_sectors = [name for name, values in leadership.items() if values.get("status") == "Weak"]
+    def calculate_opportunity_score(self):
+        bias = self._calculate_bias()
+        oar = opening_auction_risk(self.market_snapshot)
+        return int(opportunity_score(bias, oar))
 
-    if bias == "BEARISH":
-        weaknesses.append("Core index tone is defensive")
-    if weak_sectors:
-        weaknesses.append(f"Sector drag from {', '.join(weak_sectors[:2])}")
+    def identify_strengths(self):
+        strengths = []
+        bias = self._calculate_bias()
 
-    if internals.get("VIX", {}).get("direction") == "UP":
-        weaknesses.append("Volatility is rising into the open")
+        strong_sectors = [name for name, values in self.leadership.items() if values.get("status") == "Strong"]
+        if bias == "BULLISH":
+            strengths.append("Core index bias is constructive")
+        if strong_sectors:
+            strengths.append(f"Leadership supported by {', '.join(strong_sectors[:2])}")
 
-    return weaknesses[:3] or ["No dominant weakness detected"]
+        if self._historical_confidence_band() == "Strong":
+            strengths.append("Historical analog confidence is strong")
 
+        vix_direction = self.market_internals.get("VIX", {}).get("direction", "N/A")
+        if vix_direction == "DOWN":
+            strengths.append("Volatility is easing")
 
-def _key_risks(macro_events, risk_level, opening_auction_risk):
-    risks = []
-    high_impact = [event.get("event", "Macro event") for event in macro_events if str(event.get("impact", "")).upper() == "HIGH"]
+        return strengths[:3] or ["No dominant structural strength detected"]
 
-    if high_impact:
-        risks.append(f"High-impact macro release risk: {high_impact[0]}")
-    if opening_auction_risk >= 7:
-        risks.append("Opening auction may be unstable")
-    if risk_level == "HIGH":
-        risks.append("Position sizing should remain defensive")
+    def identify_weaknesses(self):
+        weaknesses = []
+        bias = self._calculate_bias()
 
-    return risks[:3] or ["No elevated risk catalyst identified"]
+        weak_sectors = [name for name, values in self.leadership.items() if values.get("status") == "Weak"]
+        if bias == "BEARISH":
+            weaknesses.append("Core index bias is defensive")
+        if weak_sectors:
+            weaknesses.append(f"Sector weakness in {', '.join(weak_sectors[:2])}")
 
+        if self.market_internals.get("VIX", {}).get("direction", "N/A") == "UP":
+            weaknesses.append("Volatility is rising")
 
-def _focus_for_today(bias, risk_level):
-    if risk_level == "HIGH":
-        return "Prioritize risk control, tighter invalidation levels, and selective entries."
-    if bias == "BULLISH":
-        return "Focus on leading sectors and momentum continuation setups after confirmation."
-    if bias == "BEARISH":
-        return "Focus on capital preservation and short-duration opportunities on weak bounces."
-    return "Focus on balanced execution and wait for directional confirmation before sizing up."
+        return weaknesses[:3] or ["No dominant structural weakness detected"]
 
+    def generate_key_risks(self):
+        key_risks = []
 
-def build_openedge_intelligence(
-    *,
-    market_internals,
-    leadership,
-    macro_events,
-    macro_risk,
-    historical_result,
-    bias,
-    confidence,
-    opening_auction_risk,
-    opportunity_score,
-):
-    """Compose a deterministic morning intelligence object from existing OPENEDGE signals."""
-    market_regime = _infer_market_regime(bias, market_internals)
-    risk_level = _risk_from_conditions(
-        macro_risk=macro_risk,
-        opening_auction_risk=opening_auction_risk,
-        bias=bias,
-        internals=market_internals,
-        leadership=leadership,
-    )
-    opening_style = _infer_opening_style(opening_auction_risk, market_regime)
-    highest_probability = _highest_probability(bias, historical_result)
+        high_impact_events = [event.get("event", "Macro event") for event in self.macro_events if str(event.get("impact", "")).upper() == "HIGH"]
+        if high_impact_events:
+            key_risks.append(f"High-impact macro event risk: {high_impact_events[0]}")
 
-    strengths = _strengths(bias, leadership, historical_result, market_internals)
-    weaknesses = _weaknesses(bias, leadership, market_internals)
-    key_risks = _key_risks(macro_events, risk_level, opening_auction_risk)
-    focus_for_today = _focus_for_today(bias, risk_level)
+        if opening_auction_risk(self.market_snapshot) >= 7:
+            key_risks.append("Opening auction imbalance risk is elevated")
 
-    summary = (
-        f"OPENEDGE reads a {market_regime} backdrop with {risk_level} risk and {confidence}/100 confidence. "
-        f"Opening style is {opening_style}, with highest-probability path biased toward {highest_probability} and opportunity score {opportunity_score}/10. "
-        f"Primary focus: {focus_for_today}"
-    )
+        if self.calculate_risk_level() == "HIGH":
+            key_risks.append("Overall risk regime is elevated")
 
-    return {
-        "market_regime": market_regime,
-        "risk_level": risk_level,
-        "confidence": confidence,
-        "opening_style": opening_style,
-        "highest_probability": highest_probability,
-        "key_risks": key_risks,
-        "strengths": strengths,
-        "weaknesses": weaknesses,
-        "focus_for_today": focus_for_today,
-        "summary": summary,
-    }
+        return key_risks[:3] or ["No elevated risk catalyst identified"]
+
+    def generate_focus(self):
+        risk_level = self.calculate_risk_level()
+        bias = self._calculate_bias()
+
+        if risk_level == "HIGH":
+            return "Prioritize capital preservation and controlled exposure into early volatility."
+        if bias == "BULLISH":
+            return "Focus on relative strength continuation setups with disciplined entries."
+        if bias == "BEARISH":
+            return "Focus on defensive positioning and short-duration opportunities."
+        return "Focus on balanced execution until direction confirms with participation."
+
+    def generate_summary(self):
+        report = {
+            "confidence": self.calculate_confidence(),
+            "market_regime": self.calculate_market_regime(),
+            "bias": self._calculate_bias(),
+            "opening_style": self.calculate_opening_style(),
+            "risk_level": self.calculate_risk_level(),
+            "opportunity_score": self.calculate_opportunity_score(),
+            "focus": self.generate_focus(),
+        }
+        highest_probability = self._highest_probability(report["bias"])
+
+        return (
+            f"OPENEDGE reads a {report['market_regime']} environment with {report['risk_level']} risk, "
+            f"{report['confidence']}/100 confidence, and bias {report['bias']}. "
+            f"Opening style is {report['opening_style']} with opportunity score {report['opportunity_score']}/10. "
+            f"Highest-probability directional path is {highest_probability}. Focus: {report['focus']}"
+        )
+
+    def build_report(self):
+        bias = self._calculate_bias()
+        return {
+            "confidence": self.calculate_confidence(),
+            "market_regime": self.calculate_market_regime(),
+            "bias": bias,
+            "opening_style": self.calculate_opening_style(),
+            "risk_level": self.calculate_risk_level(),
+            "opportunity_score": self.calculate_opportunity_score(),
+            "strengths": self.identify_strengths(),
+            "weaknesses": self.identify_weaknesses(),
+            "key_risks": self.generate_key_risks(),
+            "focus": self.generate_focus(),
+            "summary": self.generate_summary(),
+            "status": "READY",
+        }

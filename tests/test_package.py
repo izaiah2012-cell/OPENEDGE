@@ -122,7 +122,6 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         "get_macro_events",
         lambda: [{"time": "08:30 ET", "event": "CPI", "impact": "High"}],
     )
-    monkeypatch.setattr(dashboard_app, "calculate_macro_risk", lambda events: "MEDIUM")
     monkeypatch.setattr(
         dashboard_app,
         "get_historical_matches",

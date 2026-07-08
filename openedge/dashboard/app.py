@@ -6,16 +6,11 @@ import streamlit as st
 
 from openedge.analytics import explain
 from openedge.engines.history_engine import get_historical_matches
-from openedge.engines.intelligence import build_openedge_intelligence
+from openedge.engines.intelligence import IntelligenceEngine
 from openedge.data.market import get_market_snapshot
-from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
+from openedge.engines.macro_engine import get_macro_events
 from openedge.engines.market_internals import get_market_internals, summarize_market_internals
 from openedge.engines.research_writer import generate_research_summary
-from openedge.models.score_engine import (
-    market_bias,
-    opening_auction_risk,
-    opportunity_score,
-)
 from openedge.models.leadership_engine import evaluate_sector_leadership
 
 LEADERSHIP_SECTORS = [
@@ -116,53 +111,12 @@ def render_system_health_banner(db_ready):
         col.markdown(f"<div class='oe-health'><strong>{name}</strong><br>{icon} {status}</div>", unsafe_allow_html=True)
 
 
-def intelligence_explanation(bias):
-    if bias == "BULLISH":
-        return "Risk assets are broadly positive while volatility remains contained."
-    if bias == "BEARISH":
-        return "Risk assets are under pressure and volatility is expanding."
-    return "Market conditions are mixed with no strong directional bias."
-
-
 def format_bias_with_color(bias):
     if bias == "BULLISH":
         return ":green[BULLISH]"
     if bias == "BEARISH":
         return ":red[BEARISH]"
     return ":orange[NEUTRAL]"
-
-
-def classify_market_regime(snapshot):
-    spy = snapshot.get("SPY", {}).get("change") or 0.0
-    dia = snapshot.get("DIA", {}).get("change") or 0.0
-    qqq = snapshot.get("QQQ", {}).get("change") or 0.0
-    vix = snapshot.get("VIX", {}).get("change") or 0.0
-
-    avg_risk_assets = (spy + dia + qqq) / 3
-
-    if avg_risk_assets > 0.3 and vix <= 2.0:
-        return "Risk On"
-    if avg_risk_assets < -0.3 or vix >= 3.0:
-        return "Risk Off"
-    return "Neutral"
-
-
-def format_snapshot_card(symbol, values):
-    price = values.get("price")
-    change = values.get("change")
-
-    price_text = "N/A" if price is None else f"{price:.2f}"
-    if change is None:
-        change_text = "N/A"
-    else:
-        change_text = f"{change:+.2f}%"
-
-    return f"""
-### {symbol}
-Price: {price_text}
-
-Daily Change: {change_text}
-"""
 
 
 def market_internals_table(internals):
@@ -224,20 +178,6 @@ def get_market_internals_with_cache():
         return get_market_internals(), datetime.now()
 
     return _cached_fetch()
-
-
-def morning_brief(bias, regime, confidence, oar, oos):
-    bias_text = {
-        "BULLISH": "buyers currently have the tactical edge",
-        "BEARISH": "selling pressure is currently dominant",
-        "NEUTRAL": "the market is balanced without clear directional control",
-    }.get(bias, "market direction is mixed")
-
-    return (
-        f"Current regime is {regime}. Bias is {bias.lower()} and {bias_text}. "
-        f"Confidence is {confidence}/100, opening auction risk is {oar}/10, "
-        f"and opportunity score is {oos}/10."
-    )
 
 
 def _render_bullet_lines(values):
@@ -409,14 +349,6 @@ def historical_match_table(matches):
     return frame.style.apply(style_row, axis=1)
 
 
-def classify_regime_from_signals(bias, vix_change):
-    if bias == "BULLISH" and vix_change <= 2:
-        return "Risk On"
-    if bias == "BEARISH" or vix_change >= 3:
-        return "Risk Off"
-    return "Neutral"
-
-
 def _render_research_summary(report_text):
     container_fn = getattr(st, "container", None)
     if callable(container_fn):
@@ -439,17 +371,22 @@ def main():
 
     snapshot = get_market_snapshot()
     market_internals, internals_fetched_at = get_market_internals_with_cache()
-    bias, confidence = market_bias(snapshot)
-    oar = opening_auction_risk(snapshot)
-    oos = opportunity_score(bias, oar)
-    regime = classify_market_regime(snapshot)
     macro_events = get_macro_events()
-    macro_risk = calculate_macro_risk(macro_events)
     historical_result = get_historical_matches(CSV_FILE, top_n=5)
     historical_matches = historical_result.get("matches", [])
     leadership, leadership_fetched_at, used_fallback = get_leadership_with_fallback()
     latest_signal = load_latest_signal()
     history_df = load_signal_history()
+
+    engine = IntelligenceEngine(
+        market_snapshot=snapshot,
+        market_internals=market_internals,
+        leadership=leadership,
+        macro_events=macro_events,
+        historical_match=historical_result,
+        latest_signal=latest_signal,
+    )
+    report = engine.build_report()
 
     st.markdown("<div class='oe-section-gap'></div>", unsafe_allow_html=True)
     render_system_health_banner(db_ready=history_df is not None)
@@ -457,23 +394,24 @@ def main():
     with st.container(border=True):
         st.header("Today's Intelligence")
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Confidence", confidence)
-        col2.metric("Opening Auction Risk", oar)
-        col3.metric("Bias", bias)
-        col4.metric("Opportunity Score", oos)
-        col5.metric("Market Regime", regime)
+        col1.metric("Confidence", report.get("confidence", "N/A"))
+        col2.metric("Bias", report.get("bias", "N/A"))
+        col3.metric("Opportunity Score", report.get("opportunity_score", "N/A"))
+        col4.metric("Market Regime", report.get("market_regime", "N/A"))
+        col5.metric("Risk Level", report.get("risk_level", "N/A"))
 
-        st.progress(confidence / 100)
-        st.write(f"Market Bias: {format_bias_with_color(bias)}")
+        confidence = float(report.get("confidence", 0))
+        st.progress(max(0.0, min(1.0, confidence / 100.0)))
+        st.write(f"Market Bias: {format_bias_with_color(report.get('bias', 'NEUTRAL'))}")
         render_status_cards(
             [
-                ("Bias State", bias),
-                ("Regime", regime),
-                ("Macro Risk", macro_risk),
+                ("Bias State", report.get("bias", "N/A")),
+                ("Regime", report.get("market_regime", "N/A")),
+                ("Risk", report.get("risk_level", "N/A")),
                 ("Best Match Band", historical_result.get("best_match", {}).get("confidence_band", "N/A")),
             ]
         )
-        st.info(intelligence_explanation(bias))
+        st.info(report.get("summary", "N/A"))
 
     with st.container(border=True):
         st.header("Market Internals")
@@ -481,47 +419,35 @@ def main():
         st.caption(f"Last updated: {internals_fetched_at.strftime('%H:%M:%S')}")
         st.info(summarize_market_internals(market_internals))
 
-    morning_intelligence = build_openedge_intelligence(
-        market_internals=market_internals,
-        leadership=leadership,
-        macro_events=macro_events,
-        macro_risk=macro_risk,
-        historical_result=historical_result,
-        bias=bias,
-        confidence=confidence,
-        opening_auction_risk=oar,
-        opportunity_score=oos,
-    )
-
     with st.container(border=True):
         st.header("OPENEDGE MORNING INTELLIGENCE")
 
         st.subheader("Confidence Gauge")
-        st.metric("Confidence", f"{morning_intelligence.get('confidence', 0)}/100")
-        st.progress(max(0.0, min(1.0, float(morning_intelligence.get("confidence", 0)) / 100.0)))
+        st.metric("Confidence", f"{report.get('confidence', 0)}/100")
+        st.progress(max(0.0, min(1.0, float(report.get("confidence", 0)) / 100.0)))
 
         info_cols = st.columns(2)
-        info_cols[0].metric("Market Regime", morning_intelligence.get("market_regime", "N/A"))
-        info_cols[1].metric("Opening Style", morning_intelligence.get("opening_style", "N/A"))
+        info_cols[0].metric("Market Regime", report.get("market_regime", "N/A"))
+        info_cols[1].metric("Opening Style", report.get("opening_style", "N/A"))
 
         st.subheader("Key Risks")
-        _render_bullet_lines(morning_intelligence.get("key_risks", []))
+        _render_bullet_lines(report.get("key_risks", []))
 
         st.subheader("Today's Focus")
-        st.write(morning_intelligence.get("focus_for_today", "N/A"))
+        st.write(report.get("focus", "N/A"))
 
         st.subheader("Executive Summary")
-        st.info(morning_intelligence.get("summary", "N/A"))
+        st.info(report.get("summary", "N/A"))
 
     summary_payload = {
-        "market_regime": classify_regime_from_signals(bias, snapshot.get("VIX", {}).get("change") or 0.0),
-        "confidence": confidence,
-        "opening_auction_risk": oar,
-        "opportunity_score": oos,
-        "bias": bias,
+        "market_regime": report.get("market_regime", "N/A"),
+        "confidence": report.get("confidence", 0),
+        "opening_auction_risk": "N/A",
+        "opportunity_score": report.get("opportunity_score", "N/A"),
+        "bias": report.get("bias", "N/A"),
         "leadership": leadership,
         "macro_events": macro_events,
-        "macro_risk": macro_risk,
+        "macro_risk": report.get("risk_level", "N/A"),
         "historical_match": historical_result.get("best_match", {}),
         "historical_similarity": historical_result.get("average_similarity", 0.0),
     }
@@ -534,8 +460,8 @@ def main():
     with st.container(border=True):
         st.header("📅 Today's Macro Events")
         st.dataframe(macro_events_table(macro_events), hide_index=True, width="stretch")
-        st.metric("Macro Risk", macro_risk)
-        st.write(f"Macro Risk Level: {format_macro_risk(macro_risk)}")
+        st.metric("Macro Risk", report.get("risk_level", "N/A"))
+        st.write(f"Macro Risk Level: {format_macro_risk(report.get('risk_level', 'MEDIUM'))}")
 
     with st.container(border=True):
         st.header("Leadership")

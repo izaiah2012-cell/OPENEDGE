@@ -9,7 +9,7 @@ OPENEDGE is designed for research workflows and does not provide financial advic
 ## Features
 
 - Morning Intelligence Dashboard
-- Market Snapshot and Morning Brief
+- Market Internals and OPENEDGE Morning Intelligence
 - Leadership Engine with sector diagnostics
 - Macro Intelligence Engine and macro risk scoring
 - Historical Match Engine with similarity analysis
@@ -22,9 +22,19 @@ OPENEDGE is designed for research workflows and does not provide financial advic
 OPENEDGE is organized into package modules:
 
 - Dashboard layer: Streamlit app for visualization and workflow control
-- Research engine layer: score, macro, leadership, historical, and narrative engines
+- Research engine layer: score, macro, leadership, historical, intelligence, and narrative engines
 - Data layer: market fetchers and CSV history storage
 - Report layer: markdown report generation and export
+
+### Intelligence Service Flow
+
+```mermaid
+flowchart TD
+  A[Market Data] --> B[Intelligence Engine]
+  B --> C[Dashboard]
+```
+
+The service-oriented `IntelligenceEngine` centralizes market regime, risk level, confidence, opening style, opportunity score, strengths, weaknesses, key risks, focus, and summary generation into a deterministic report object consumed by the dashboard.
 
 See docs/architecture.md for more details.
 
