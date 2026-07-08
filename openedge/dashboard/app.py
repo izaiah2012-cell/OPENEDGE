@@ -6,6 +6,7 @@ import streamlit as st
 
 from openedge.analytics import explain
 from openedge.data.market import get_market_snapshot
+from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
 from openedge.models.score_engine import (
     market_bias,
     opening_auction_risk,
@@ -175,6 +176,30 @@ def leadership_table(leadership, fetched_at):
     return frame.style.map(style_status, subset=["Status"])
 
 
+def macro_events_table(events):
+    if not events:
+        return pd.DataFrame(columns=["Time", "Event", "Impact"])
+
+    return pd.DataFrame(
+        [
+            {
+                "Time": event.get("time", "N/A"),
+                "Event": event.get("event", "N/A"),
+                "Impact": event.get("impact", "Low"),
+            }
+            for event in events
+        ]
+    )
+
+
+def format_macro_risk(risk):
+    if risk == "LOW":
+        return ":green[LOW]"
+    if risk == "MEDIUM":
+        return ":orange[MEDIUM]"
+    return ":red[HIGH]"
+
+
 def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
     st.title("📈 OPENEDGE")
@@ -185,6 +210,8 @@ def main():
     oar = opening_auction_risk(snapshot)
     oos = opportunity_score(bias, oar)
     regime = classify_market_regime(snapshot)
+    macro_events = get_macro_events()
+    macro_risk = calculate_macro_risk(macro_events)
     leadership, leadership_fetched_at, used_fallback = get_leadership_with_fallback()
     latest_signal = load_latest_signal()
     history_df = load_signal_history()
@@ -210,6 +237,11 @@ def main():
 
     st.header("Morning Brief")
     st.info(morning_brief(bias, regime, confidence, oar, oos))
+
+    st.header("Today's Macro Events")
+    st.dataframe(macro_events_table(macro_events), hide_index=True, width="stretch")
+    st.metric("Macro Risk", macro_risk)
+    st.write(f"Macro Risk Level: {format_macro_risk(macro_risk)}")
 
     st.header("Leadership")
     if used_fallback:

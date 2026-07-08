@@ -7,6 +7,7 @@ import openedge
 import openedge.analytics.explanation as explanation_module
 import openedge.dashboard.app as dashboard_app
 import openedge.data.market as market_module
+import openedge.engines.macro_engine as macro_module
 
 
 def load_cli_module():
@@ -23,6 +24,7 @@ def test_package_imports_work():
     assert dashboard_app is not None
     assert market_module is not None
     assert explanation_module is not None
+    assert macro_module is not None
 
 
 def test_csv_is_located_from_project_root():
@@ -42,6 +44,9 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
 
     class DummyStreamlit:
         def set_page_config(self, *args, **kwargs):
+            return None
+
+        def metric(self, *args, **kwargs):
             return None
 
         def title(self, *args, **kwargs):
@@ -81,6 +86,12 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
             return [DummyContainer() for _ in range(count)]
 
     monkeypatch.setattr(dashboard_app, "get_market_snapshot", lambda: {"SPY": {"price": 100.0, "change": 0.5}})
+    monkeypatch.setattr(
+        dashboard_app,
+        "get_macro_events",
+        lambda: [{"time": "08:30 ET", "event": "CPI", "impact": "High"}],
+    )
+    monkeypatch.setattr(dashboard_app, "calculate_macro_risk", lambda events: "MEDIUM")
     monkeypatch.setattr(
         dashboard_app,
         "evaluate_sector_leadership",
