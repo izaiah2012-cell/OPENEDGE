@@ -1,0 +1,111 @@
+import importlib.util
+from pathlib import Path
+
+import pandas as pd
+
+import openedge
+import openedge.analytics.explanation as explanation_module
+import openedge.dashboard.app as dashboard_app
+import openedge.data.market as market_module
+
+
+def load_cli_module():
+    module_path = Path(__file__).resolve().parents[1] / "openedge.py"
+    spec = importlib.util.spec_from_file_location("openedge_cli", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_package_imports_work():
+    assert openedge is not None
+    assert dashboard_app is not None
+    assert market_module is not None
+    assert explanation_module is not None
+
+
+def test_csv_is_located_from_project_root():
+    repo_root = Path(__file__).resolve().parents[1]
+    csv_path = repo_root / "openedge_db.csv"
+    assert csv_path.exists()
+    assert csv_path.is_file()
+
+
+def test_dashboard_app_loads_without_raising(monkeypatch):
+    class DummyContainer:
+        def metric(self, *args, **kwargs):
+            return None
+
+    class DummyStreamlit:
+        def set_page_config(self, *args, **kwargs):
+            return None
+
+        def title(self, *args, **kwargs):
+            return None
+
+        def subheader(self, *args, **kwargs):
+            return None
+
+        def header(self, *args, **kwargs):
+            return None
+
+        def info(self, *args, **kwargs):
+            return None
+
+        def success(self, *args, **kwargs):
+            return None
+
+        def write(self, *args, **kwargs):
+            return None
+
+        def json(self, *args, **kwargs):
+            return None
+
+        def divider(self, *args, **kwargs):
+            return None
+
+        def columns(self, count):
+            return [DummyContainer() for _ in range(count)]
+
+    monkeypatch.setattr(dashboard_app, "get_market_snapshot", lambda: {"SPY": {"price": 100.0, "change": 0.5}})
+    monkeypatch.setattr(dashboard_app, "load_latest_signal", lambda: {"bias": "UP", "risk": 0.1, "leadership": 0.2, "vix": 5})
+    monkeypatch.setattr(dashboard_app, "st", DummyStreamlit())
+
+    dashboard_app.main()
+
+
+def test_cli_analyze_mode_runs_without_crashing(monkeypatch, tmp_path):
+    cli_module = load_cli_module()
+    csv_path = tmp_path / "openedge_db.csv"
+    csv_path.write_text(
+        "date,risk,leadership,vix,gap_pct,range_5m,open_type,oar,oos,bias,actual,correct\n"
+        "2024-01-01,0.1,0.2,5,0.3,0.4,NEUTRAL OPEN,5,0.15,UP,UP,1\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(cli_module, "DB_FILE", csv_path)
+    monkeypatch.setattr(
+        cli_module,
+        "load_database",
+        lambda path: pd.DataFrame(
+            [
+                {
+                    "date": "2024-01-01",
+                    "risk": 0.1,
+                    "leadership": 0.2,
+                    "vix": 5,
+                    "gap_pct": 0.3,
+                    "range_5m": 0.4,
+                    "open_type": "NEUTRAL OPEN",
+                    "oar": 5,
+                    "oos": 0.15,
+                    "bias": "UP",
+                    "actual": "UP",
+                    "correct": 1,
+                }
+            ]
+        ),
+    )
+
+    cli_module.analyze()

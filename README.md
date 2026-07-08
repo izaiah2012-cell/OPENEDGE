@@ -1,6 +1,14 @@
 # OPENEDGE
 Trading automation analysis tool
 
+## Testing
+
+Run the lightweight regression suite:
+
+```bash
+pytest
+```
+
 ## CLI Usage
 
 Run the signal generator:

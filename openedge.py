@@ -1,10 +1,15 @@
 import argparse
-import yfinance as yf
+import os
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-import os
-import time
+import yfinance as yf
+
+BASE_DIR = Path(__file__).resolve().parent
+DB_FILE = BASE_DIR / "openedge_db.csv"
+
 # -----------------------------
 # DATA
 # -----------------------------
@@ -47,11 +52,6 @@ def classify_open(gap, range5):
     return "NEUTRAL OPEN"
 
 
-def similarity(a, b):
-    # simple weighted distance
-    return abs(a["gap_pct"] - b["gap_pct"]) + abs(a["range_5m"] - b["range_5m"])
-
-
 def similar_day_probability(df, today):
     scores = []
 
@@ -82,9 +82,6 @@ def compute_open_type():
     if open_data:
         return classify_open(open_data["gap_pct"], open_data["range_5m"])
     return "NO DATA"
-
-
-open_type = compute_open_type()
 
 
 def price(ticker):
@@ -176,40 +173,43 @@ def normalize_dataframe(df):
 
 
 def migrate_database(file):
-    backup = file + ".bak"
-    df = pd.read_csv(file, on_bad_lines="skip")
+    file_path = Path(file)
+    backup = file_path.with_suffix(file_path.suffix + ".bak")
+    df = pd.read_csv(file_path, on_bad_lines="skip")
     df = normalize_dataframe(df)
-    os.rename(file, backup)
-    df.to_csv(file, index=False, columns=CANONICAL_COLUMNS)
+    if backup.exists():
+        backup.unlink()
+    file_path.rename(backup)
+    df.to_csv(file_path, index=False, columns=CANONICAL_COLUMNS)
     print(f"Migrated legacy dataset to new schema and backed up original to {backup}.")
     return df
 
 
 def save(row):
-    file = "openedge_db.csv"
     df_row = pd.DataFrame([row], columns=CANONICAL_COLUMNS)
 
-    if os.path.exists(file):
-        with open(file, "r", encoding="utf-8") as f:
+    if DB_FILE.exists():
+        with DB_FILE.open("r", encoding="utf-8") as f:
             existing_header = f.readline().strip().split(",")
 
         if existing_header != CANONICAL_COLUMNS:
-            migrate_database(file)
+            migrate_database(DB_FILE)
 
-        df_row.to_csv(file, mode="a", header=False, index=False, columns=CANONICAL_COLUMNS)
+        df_row.to_csv(DB_FILE, mode="a", header=False, index=False, columns=CANONICAL_COLUMNS)
     else:
-        df_row.to_csv(file, index=False, columns=CANONICAL_COLUMNS)
+        df_row.to_csv(DB_FILE, index=False, columns=CANONICAL_COLUMNS)
 
 
 def load_database(file):
+    file_path = Path(file)
     try:
-        df = pd.read_csv(file)
+        df = pd.read_csv(file_path)
     except pd.errors.ParserError:
-        df = pd.read_csv(file, on_bad_lines="skip")
+        df = pd.read_csv(file_path, on_bad_lines="skip")
 
     if set(df.columns) != set(CANONICAL_COLUMNS):
         df = normalize_dataframe(df)
-        df.to_csv(file, index=False, columns=CANONICAL_COLUMNS)
+        df.to_csv(file_path, index=False, columns=CANONICAL_COLUMNS)
 
     return df
 
@@ -254,8 +254,8 @@ def run():
         row["range_5m"] = open_data["range_5m"]
         row["open_type"] = open_type
 
-    if os.path.exists("openedge_db.csv"):
-        df = load_database("openedge_db.csv")
+    if DB_FILE.exists():
+        df = load_database(DB_FILE)
     else:
         df = pd.DataFrame(columns=CANONICAL_COLUMNS)
 
@@ -301,13 +301,11 @@ def run():
 
 
 def analyze():
-    file = "openedge_db.csv"
-
-    if not os.path.exists(file):
+    if not DB_FILE.exists():
         print("No dataset found yet.")
         return
 
-    df = load_database(file)
+    df = load_database(DB_FILE)
 
     if len(df) == 0:
         print("Dataset empty.")
@@ -425,15 +423,13 @@ def main():
     if args.mode == "analyze":
         analyze()
     elif args.mode == "edge":
-        file = "openedge_db.csv"
-        if not os.path.exists(file):
+        if not DB_FILE.exists():
             print("No dataset found yet.")
             return
-        df = load_database(file)
+        df = load_database(DB_FILE)
         edge_evaluation(df)
     elif args.mode == "feature":
-        file = "openedge_db.csv"
-        if not os.path.exists(file):
+        if not DB_FILE.exists():
             print("No dataset found yet.")
             return
         feature_importance()
@@ -467,13 +463,11 @@ def edge_evaluation(df):
 
 
 def feature_importance():
-    file = "openedge_db.csv"
-
-    if not os.path.exists(file):
+    if not DB_FILE.exists():
         print("No dataset found")
         return
 
-    df = load_database(file)
+    df = load_database(DB_FILE)
 
     if "correct" not in df.columns:
         print("No correctness column found")

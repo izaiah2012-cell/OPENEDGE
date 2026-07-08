@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openedge"
+version = "1.0.0"
+description = "OPENEDGE: Research Before Risk"
+requires-python = ">=3.8"
+dependencies = [
+    "streamlit",
+    "yfinance",
+    "numpy",
+    "pandas",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools]
+packages = {find = {include = ["openedge*"]}}
+
+[tool.setuptools.package-data]
