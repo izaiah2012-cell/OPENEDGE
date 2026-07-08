@@ -8,6 +8,7 @@ from openedge.analytics import explain
 from openedge.engines.history_engine import get_historical_matches
 from openedge.data.market import get_market_snapshot
 from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
+from openedge.engines.market_internals import get_market_internals
 from openedge.engines.research_writer import generate_research_summary
 from openedge.models.score_engine import (
     market_bias,
@@ -161,6 +162,74 @@ Price: {price_text}
 
 Daily Change: {change_text}
 """
+
+
+def market_internals_table(internals, fetched_at):
+    if not internals:
+        return pd.DataFrame(columns=["Asset", "Price", "Daily Change", "Direction", "Status", "Last Updated"])
+
+    last_updated = fetched_at.strftime("%H:%M:%S")
+
+    rows = []
+    for asset, values in internals.items():
+        price = values.get("price")
+        daily_change = values.get("daily_change")
+        direction = values.get("direction", "N/A")
+        status = "Live" if direction != "N/A" else "Unavailable"
+        rows.append(
+            {
+                "Asset": asset,
+                "Price": "N/A" if price is None else f"{price:,.2f}",
+                "Daily Change": "N/A" if daily_change is None else f"{daily_change:+.2f}%",
+                "Direction": direction,
+                "Status": status,
+                "Last Updated": last_updated,
+            }
+        )
+
+    frame = pd.DataFrame(rows)
+
+    def style_direction(value):
+        if value == "UP":
+            return "color: #15803d; font-weight: 700;"
+        if value == "DOWN":
+            return "color: #b91c1c; font-weight: 700;"
+        if value == "FLAT":
+            return "color: #d97706; font-weight: 700;"
+        return "color: #94a3b8;"
+
+    def style_change(value):
+        if value == "N/A":
+            return "color: #94a3b8;"
+        if value.startswith("+"):
+            return "color: #15803d; font-weight: 700;"
+        if value.startswith("-"):
+            return "color: #b91c1c; font-weight: 700;"
+        return "color: #d97706; font-weight: 700;"
+
+    def style_status(value):
+        if value == "Live":
+            return "color: #15803d; font-weight: 700;"
+        return "color: #b91c1c; font-weight: 700;"
+
+    return (
+        frame.style
+        .map(style_change, subset=["Daily Change"])
+        .map(style_direction, subset=["Direction"])
+        .map(style_status, subset=["Status"])
+    )
+
+
+def get_market_internals_with_cache():
+    cache_data = getattr(st, "cache_data", None)
+    if cache_data is None:
+        return get_market_internals(), datetime.now()
+
+    @cache_data(ttl=120, show_spinner=False)
+    def _cached_fetch():
+        return get_market_internals(), datetime.now()
+
+    return _cached_fetch()
 
 
 def morning_brief(bias, regime, confidence, oar, oos):
@@ -366,6 +435,7 @@ def main():
     st.subheader("Research Before Risk")
 
     snapshot = get_market_snapshot()
+    market_internals, internals_fetched_at = get_market_internals_with_cache()
     bias, confidence = market_bias(snapshot)
     oar = opening_auction_risk(snapshot)
     oos = opportunity_score(bias, oar)
@@ -403,12 +473,8 @@ def main():
         st.info(intelligence_explanation(bias))
 
     with st.container(border=True):
-        st.header("Market Snapshot")
-        snap_cols = st.columns(4)
-        symbols = ["SPY", "DIA", "QQQ", "VIX"]
-        for col, symbol in zip(snap_cols, symbols):
-            values = snapshot.get(symbol, {"price": None, "change": None})
-            col.markdown(format_snapshot_card(symbol, values))
+        st.header("Market Internals")
+        st.dataframe(market_internals_table(market_internals, internals_fetched_at), hide_index=True, width="stretch")
 
     with st.container(border=True):
         st.header("Morning Brief")

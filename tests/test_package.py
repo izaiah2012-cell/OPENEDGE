@@ -1,4 +1,5 @@
 import importlib.util
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -102,6 +103,17 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
     monkeypatch.setattr(dashboard_app, "get_market_snapshot", lambda: {"SPY": {"price": 100.0, "change": 0.5}})
     monkeypatch.setattr(
         dashboard_app,
+        "get_market_internals_with_cache",
+        lambda: (
+            {
+                "SPY": {"price": 100.0, "daily_change": 0.5, "direction": "UP"},
+                "DIA": {"price": 90.0, "daily_change": -0.2, "direction": "DOWN"},
+            },
+            datetime(2026, 7, 8, 9, 30, 0),
+        ),
+    )
+    monkeypatch.setattr(
+        dashboard_app,
         "get_macro_events",
         lambda: [{"time": "08:30 ET", "event": "CPI", "impact": "High"}],
     )
@@ -126,6 +138,19 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
     monkeypatch.setattr(dashboard_app, "st", DummyStreamlit())
 
     dashboard_app.main()
+
+
+def test_market_internals_table_has_expected_columns():
+    sample = {
+        "SPY": {"price": 615.2, "daily_change": 0.42, "direction": "UP"},
+        "VIX": {"price": 14.9, "daily_change": -1.25, "direction": "DOWN"},
+    }
+
+    styled = dashboard_app.market_internals_table(sample, datetime(2026, 7, 8, 9, 45, 0))
+    frame = styled.data
+
+    assert list(frame.columns) == ["Asset", "Price", "Daily Change", "Direction", "Status", "Last Updated"]
+    assert len(frame) == 2
 
 
 def test_cli_analyze_mode_runs_without_crashing(monkeypatch, tmp_path):
