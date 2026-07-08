@@ -22,3 +22,7 @@ build/
 .coverage
 .coverage.*
 htmlcov/
+
+# Generated reports
+reports/*.md
+!reports/.gitkeep
