@@ -9,6 +9,7 @@ import openedge.analytics.explanation as explanation_module
 import openedge.dashboard.app as dashboard_app
 import openedge.data.market as market_module
 import openedge.engines.history_engine as history_module
+import openedge.engines.intelligence as intelligence_module
 import openedge.engines.macro_engine as macro_module
 import openedge.engines.research_writer as writer_module
 
@@ -28,6 +29,7 @@ def test_package_imports_work():
     assert market_module is not None
     assert explanation_module is not None
     assert macro_module is not None
+    assert intelligence_module is not None
     assert history_module is not None
     assert writer_module is not None
 

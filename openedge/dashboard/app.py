@@ -6,6 +6,7 @@ import streamlit as st
 
 from openedge.analytics import explain
 from openedge.engines.history_engine import get_historical_matches
+from openedge.engines.intelligence import build_openedge_intelligence
 from openedge.data.market import get_market_snapshot
 from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
 from openedge.engines.market_internals import get_market_internals, summarize_market_internals
@@ -237,6 +238,15 @@ def morning_brief(bias, regime, confidence, oar, oos):
         f"Confidence is {confidence}/100, opening auction risk is {oar}/10, "
         f"and opportunity score is {oos}/10."
     )
+
+
+def _render_bullet_lines(values):
+    if not values:
+        st.write("- N/A")
+        return
+
+    for value in values:
+        st.write(f"- {value}")
 
 
 def load_signal_history():
@@ -471,9 +481,37 @@ def main():
         st.caption(f"Last updated: {internals_fetched_at.strftime('%H:%M:%S')}")
         st.info(summarize_market_internals(market_internals))
 
+    morning_intelligence = build_openedge_intelligence(
+        market_internals=market_internals,
+        leadership=leadership,
+        macro_events=macro_events,
+        macro_risk=macro_risk,
+        historical_result=historical_result,
+        bias=bias,
+        confidence=confidence,
+        opening_auction_risk=oar,
+        opportunity_score=oos,
+    )
+
     with st.container(border=True):
-        st.header("Morning Brief")
-        st.info(morning_brief(bias, regime, confidence, oar, oos))
+        st.header("OPENEDGE MORNING INTELLIGENCE")
+
+        st.subheader("Confidence Gauge")
+        st.metric("Confidence", f"{morning_intelligence.get('confidence', 0)}/100")
+        st.progress(max(0.0, min(1.0, float(morning_intelligence.get("confidence", 0)) / 100.0)))
+
+        info_cols = st.columns(2)
+        info_cols[0].metric("Market Regime", morning_intelligence.get("market_regime", "N/A"))
+        info_cols[1].metric("Opening Style", morning_intelligence.get("opening_style", "N/A"))
+
+        st.subheader("Key Risks")
+        _render_bullet_lines(morning_intelligence.get("key_risks", []))
+
+        st.subheader("Today's Focus")
+        st.write(morning_intelligence.get("focus_for_today", "N/A"))
+
+        st.subheader("Executive Summary")
+        st.info(morning_intelligence.get("summary", "N/A"))
 
     summary_payload = {
         "market_regime": classify_regime_from_signals(bias, snapshot.get("VIX", {}).get("change") or 0.0),
