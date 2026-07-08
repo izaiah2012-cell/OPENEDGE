@@ -238,7 +238,7 @@ def main():
     st.header("Morning Brief")
     st.info(morning_brief(bias, regime, confidence, oar, oos))
 
-    st.header("Today's Macro Events")
+    st.header("📅 Today's Macro Events")
     st.dataframe(macro_events_table(macro_events), hide_index=True, width="stretch")
     st.metric("Macro Risk", macro_risk)
     st.write(f"Macro Risk Level: {format_macro_risk(macro_risk)}")
