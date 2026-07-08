@@ -4,6 +4,10 @@ OPENEDGE uses a modular architecture designed for morning market research workfl
 
 ## Core Flow
 
+User
+
+↓
+
 Dashboard
 
 ↓

@@ -1,34 +1,31 @@
 # OPENEDGE Changelog
 
-## v1.0 Beta
+## v1.0.0-beta
 
 ### Added
 
-- Morning Intelligence Dashboard
+- Market Intelligence Dashboard
 - Market Snapshot
 - Morning Brief
 - Leadership Engine
 - Macro Intelligence Engine
 - Historical Match Engine
-- Performance Dashboard
-- AI Research Writer
-- Markdown report generation
+- AI Research Summary
+- Performance Analytics
+- Markdown Report Generation
 
 ### Improved
 
-- Modular architecture
-- CSV handling
+- Modular package architecture
+- Dashboard rendering
+- CSV database management
 - Historical similarity analysis
-- Dashboard stability
+- Package import stability
 
 ### Fixed
 
-- Import resolution
-- Package structure
-- Database path handling
-
-### Release Validation Checklist
-
-- `python -m pytest -q` passes
-- `python openedge.py analyze` runs successfully
-- `streamlit run openedge/dashboard/app.py` starts without import errors
+- Relative imports
+- Database path resolution
+- Dashboard loading
+- CSV migration
+- Historical calculations

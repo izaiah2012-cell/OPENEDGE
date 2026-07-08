@@ -2,7 +2,7 @@
 
 OPENEDGE is a research platform for structured market observation.
 
-It does not provide financial advice.
+It does not provide investment advice.
 
 ## Risk Score
 
@@ -16,18 +16,22 @@ Opening Auction Risk estimates opening-session instability. Higher values indica
 
 Opportunity Score combines directional context and opening risk into a single research signal for session quality assessment.
 
-## Leadership
+## Leadership Engine
 
 Leadership evaluates sector strength and weakness across key groups (for example, Technology, Financials, Industrials, Healthcare, Consumer, Energy).
+
+## Macro Engine
+
+Macro Engine tracks scheduled economic catalysts and summarizes their aggregate risk profile (LOW, MEDIUM, HIGH).
 
 ## Historical Matching
 
 Historical Matching compares the latest completed research row with prior sessions using weighted distance metrics. It identifies the most similar past conditions and reports confidence bands and feature-level diagnostics.
 
-## Macro Events
-
-Macro Events track scheduled economic catalysts and summarize their aggregate risk profile (LOW, MEDIUM, HIGH).
-
-## Research Summary
+## AI Research Writer
 
 The AI Research Summary converts computed research signals into an institutional-style morning note. It is observational, descriptive, and intentionally non-prescriptive.
+
+## Performance Analytics
+
+Performance Analytics summarizes historical signal correctness, outcome distribution, and trend-level research reliability.

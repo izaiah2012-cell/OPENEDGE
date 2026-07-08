@@ -1,6 +1,6 @@
 # OPENEDGE
 
-## Project Overview
+## Project
 
 OPENEDGE is a modular morning market research platform focused on structured observation of market conditions. The platform aggregates index behavior, sector leadership, macro catalysts, and historical matching into a single dashboard and daily research note.
 
@@ -46,16 +46,12 @@ Run data collection:
 python openedge.py run
 ```
 
+## Running Analysis
+
 Run analysis and generate report:
 
 ```bash
 python openedge.py analyze
-```
-
-Run tests:
-
-```bash
-python -m pytest -q
 ```
 
 ## Dashboard
@@ -70,11 +66,11 @@ streamlit run openedge/dashboard/app.py
 
 ```text
 openedge/
-	analytics/
-	dashboard/
-	data/
-	engines/
-	models/
+  analytics/
+  dashboard/
+  data/
+  engines/
+  models/
 
 docs/
 reports/
@@ -83,25 +79,27 @@ openedge.py
 openedge_db.csv
 ```
 
-## Research Workflow
+## Testing
 
-1. Collect/update session research rows with python openedge.py run.
-2. Analyze historical behavior with python openedge.py analyze.
-3. Review dashboard sections for intelligence, macro, leadership, and historical matching.
-4. Archive daily markdown note from reports/.
+Run the full test suite:
 
-## Future Roadmap
+```bash
+python -m pytest -q
+```
 
-See ROADMAP.md for planned releases and milestones.
+## Roadmap
+
+See ROADMAP.md for completed and upcoming milestones.
 
 ## Contributing
 
-1. Create a feature branch.
-2. Add or update tests for your change.
-3. Run pytest and verify dashboard startup.
-4. Open a pull request with a concise change summary.
+See CONTRIBUTING.md for contribution workflow, branch strategy, and pull request standards.
 
 ## License
 
 MIT License. See LICENSE.
+
+## Disclaimer
+
+OPENEDGE is a market research platform. It does not provide investment advice.
 

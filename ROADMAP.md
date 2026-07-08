@@ -2,28 +2,31 @@
 
 ## Completed
 
-- Sprint 1
-- Sprint 2
-- Sprint 3
-- Sprint 4
-- Sprint 5
-- Sprint 6.1
+- ✓ Sprint 1 Foundation
+- ✓ Sprint 2 Market Snapshot
+- ✓ Sprint 3 Dashboard
+- ✓ Sprint 4 Intelligence Layer
+- ✓ Sprint 5 Research Engines
+- ✓ Sprint 6.1 AI Research Writer
 
-## Upcoming
+## Future
 
 ### Version 1.1
 
-- Interactive charts
-- Heat maps
-- Confidence gauge
-- Performance analytics
+- Interactive Charts
+- Sector Heat Map
+- Confidence Gauge
+- Interactive Historical Analysis
 
 ### Version 1.2
 
-- Automation
-- Daily scheduled reports
-- Cloud deployment
+- Automatic Daily Reports
+- Email Reports
+- Economic Calendar API
 
 ### Version 2.0
 
-- Morning Research Terminal
+- Cloud Research Terminal
+- Portfolio Research
+- API
+- Multi-user
