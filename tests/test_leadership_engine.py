@@ -46,3 +46,5 @@ def test_evaluate_sector_leadership_classification(monkeypatch):
     assert result["Industrials"]["status"] == "Weak"
     assert result["Energy"]["status"] == "Weak"
     assert isinstance(result["Technology"]["score"], float)
+    assert "momentum_5d" in result["Technology"]
+    assert isinstance(result["Technology"]["momentum_5d"], float)

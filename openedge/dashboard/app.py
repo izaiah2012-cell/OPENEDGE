@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -11,6 +12,15 @@ from openedge.models.score_engine import (
     opportunity_score,
 )
 from openedge.models.leadership_engine import evaluate_sector_leadership
+
+LEADERSHIP_SECTORS = [
+    "Technology",
+    "Financials",
+    "Industrials",
+    "Healthcare",
+    "Consumer",
+    "Energy",
+]
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CSV_FILE = BASE_DIR / "openedge_db.csv"
@@ -102,14 +112,54 @@ def load_latest_signal():
     return df.iloc[-1].to_dict()
 
 
-def leadership_table(leadership):
+def _fetch_leadership_cached():
+    cache_data = getattr(st, "cache_data", None)
+    if cache_data is None:
+        return evaluate_sector_leadership()
+
+    @cache_data(ttl=300, show_spinner=False)
+    def _cached_fetch():
+        return evaluate_sector_leadership()
+
+    return _cached_fetch()
+
+
+def get_leadership_with_fallback():
+    fetched_at = datetime.now()
+    leadership = _fetch_leadership_cached()
+    used_fallback = False
+
+    missing = [sector for sector in LEADERSHIP_SECTORS if sector not in leadership]
+    session_state = getattr(st, "session_state", None)
+    if missing and session_state is not None and "leadership_last" in session_state:
+        prior = session_state.get("leadership_last", {})
+        for sector in missing:
+            if sector in prior:
+                leadership[sector] = prior[sector]
+                used_fallback = True
+
+    if session_state is not None:
+        session_state["leadership_last"] = leadership
+        session_state["leadership_fetched_at"] = fetched_at
+
+    return leadership, fetched_at, used_fallback
+
+
+def leadership_table(leadership, fetched_at):
+    age_seconds = max(0, int((datetime.now() - fetched_at).total_seconds()))
+    freshness = "Live" if age_seconds < 120 else "Cached"
+
     rows = []
-    for sector, values in leadership.items():
+    for sector in LEADERSHIP_SECTORS:
+        values = leadership.get(sector, {})
         rows.append(
             {
                 "Sector": sector,
                 "Score (%)": values.get("score", 0.0),
+                "5D Momentum (%)": values.get("momentum_5d", 0.0),
                 "Status": values.get("status", "Neutral"),
+                "Last Updated": fetched_at.strftime("%H:%M:%S"),
+                "Freshness": freshness,
             }
         )
 
@@ -135,7 +185,7 @@ def main():
     oar = opening_auction_risk(snapshot)
     oos = opportunity_score(bias, oar)
     regime = classify_market_regime(snapshot)
-    leadership = evaluate_sector_leadership()
+    leadership, leadership_fetched_at, used_fallback = get_leadership_with_fallback()
     latest_signal = load_latest_signal()
     history_df = load_signal_history()
 
@@ -162,7 +212,9 @@ def main():
     st.info(morning_brief(bias, regime, confidence, oar, oos))
 
     st.header("Leadership")
-    st.dataframe(leadership_table(leadership), hide_index=True, width="stretch")
+    if used_fallback:
+        st.info("Leadership is partially using last known values due to temporary data gaps.")
+    st.dataframe(leadership_table(leadership, leadership_fetched_at), hide_index=True, width="stretch")
 
     st.divider()
 
