@@ -37,6 +37,9 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         def metric(self, *args, **kwargs):
             return None
 
+        def markdown(self, *args, **kwargs):
+            return None
+
     class DummyStreamlit:
         def set_page_config(self, *args, **kwargs):
             return None
@@ -59,6 +62,15 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         def write(self, *args, **kwargs):
             return None
 
+        def markdown(self, *args, **kwargs):
+            return None
+
+        def progress(self, *args, **kwargs):
+            return None
+
+        def dataframe(self, *args, **kwargs):
+            return None
+
         def json(self, *args, **kwargs):
             return None
 
@@ -69,6 +81,11 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
             return [DummyContainer() for _ in range(count)]
 
     monkeypatch.setattr(dashboard_app, "get_market_snapshot", lambda: {"SPY": {"price": 100.0, "change": 0.5}})
+    monkeypatch.setattr(
+        dashboard_app,
+        "evaluate_sector_leadership",
+        lambda: {"Technology": {"score": 1.2, "status": "Strong"}},
+    )
     monkeypatch.setattr(dashboard_app, "load_latest_signal", lambda: {"bias": "UP", "risk": 0.1, "leadership": 0.2, "vix": 5})
     monkeypatch.setattr(dashboard_app, "st", DummyStreamlit())
 
