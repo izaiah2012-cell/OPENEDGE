@@ -73,6 +73,9 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         def info(self, *args, **kwargs):
             return None
 
+        def caption(self, *args, **kwargs):
+            return None
+
         def success(self, *args, **kwargs):
             return None
 
@@ -106,8 +109,8 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         "get_market_internals_with_cache",
         lambda: (
             {
-                "SPY": {"price": 100.0, "daily_change": 0.5, "direction": "UP"},
-                "DIA": {"price": 90.0, "daily_change": -0.2, "direction": "DOWN"},
+                "SPY": {"price": 100.0, "daily_change_percent": 0.5, "direction": "UP"},
+                "DIA": {"price": 90.0, "daily_change_percent": -0.2, "direction": "DOWN"},
             },
             datetime(2026, 7, 8, 9, 30, 0),
         ),
@@ -142,14 +145,14 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
 
 def test_market_internals_table_has_expected_columns():
     sample = {
-        "SPY": {"price": 615.2, "daily_change": 0.42, "direction": "UP"},
-        "VIX": {"price": 14.9, "daily_change": -1.25, "direction": "DOWN"},
+        "SPY": {"price": 615.2, "daily_change_percent": 0.42, "direction": "UP"},
+        "VIX": {"price": 14.9, "daily_change_percent": -1.25, "direction": "DOWN"},
     }
 
-    styled = dashboard_app.market_internals_table(sample, datetime(2026, 7, 8, 9, 45, 0))
+    styled = dashboard_app.market_internals_table(sample)
     frame = styled.data
 
-    assert list(frame.columns) == ["Asset", "Price", "Daily Change", "Direction", "Status", "Last Updated"]
+    assert list(frame.columns) == ["Asset", "Price", "Daily %", "Direction"]
     assert len(frame) == 2
 
 
