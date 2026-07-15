@@ -28,7 +28,7 @@ from openedge.validation.validation_engine import ValidationEngine
 BASE_DIR = Path(__file__).resolve().parents[3]
 CSV_FILE = BASE_DIR / "openedge_db.csv"
 JOURNAL_FILE = BASE_DIR / "research_journal.csv"
-DISPLAY_VERSION = "v1.0.0-beta"
+DISPLAY_VERSION = "v1.2.0"
 
 
 def _safe_plotly_chart(st_module, fig):

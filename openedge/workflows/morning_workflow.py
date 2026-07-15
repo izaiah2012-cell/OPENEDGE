@@ -14,6 +14,9 @@ from openedge.engines.intelligence import IntelligenceEngine
 from openedge.engines.macro_engine import get_macro_events
 from openedge.engines.market_internals import get_market_internals
 from openedge.models.leadership_engine import evaluate_sector_leadership
+from openedge.research.grading import ResearchGrader
+from openedge.research.journal import ResearchDay, ResearchJournal
+from openedge.research.reviewer import ResearchReviewer
 from openedge.validation.journal import append_journal_entry
 from openedge.workflows.exporters import HTMLExporter, JSONExporter, MarkdownExporter
 from openedge.workflows.report_builder import ReportBuilder
@@ -38,6 +41,9 @@ class MorningWorkflow:
         self.markdown_exporter = MarkdownExporter()
         self.json_exporter = JSONExporter()
         self.html_exporter = HTMLExporter()
+        self.research_journal = ResearchJournal(self.base_dir)
+        self.research_grader = ResearchGrader()
+        self.research_reviewer = ResearchReviewer(self.base_dir)
 
         self._started_at: datetime | None = None
         self._ended_at: datetime | None = None
@@ -87,7 +93,7 @@ class MorningWorkflow:
             macro_events=macro_events,
             leadership=leadership,
             historical_match=historical_match,
-            version="v1.1.0",
+            version="v1.2.0",
             workflow_id=self.as_of.strftime("%Y%m%d%H%M%S"),
             report_id=self._report_id(),
             historical_database_version=self._historical_database_version(),
@@ -152,6 +158,8 @@ class MorningWorkflow:
             report_paths = self.export_reports(report)
             self._save_history_snapshot(report)
             self._append_journal_entry(report)
+            self._record_research_memory(report)
+            self.research_reviewer.maybe_generate_reviews(as_of=self.as_of, report=report)
             success = True
             return report
         except Exception as exc:
@@ -206,6 +214,20 @@ class MorningWorkflow:
                 "notes": "source=morning_workflow",
             },
         )
+
+    def _record_research_memory(self, report):
+        same_day = self.research_journal.search(start_date=self.as_of.strftime("%Y-%m-%d"), end_date=self.as_of.strftime("%Y-%m-%d"))
+        refresh_count = int(len(same_day)) + 1
+        day = ResearchDay.from_report(
+            report,
+            refresh_count=refresh_count,
+            comments=str(report.get("Research Conclusion", "")),
+            lessons_learned=str(report.get("Raw Engine Report", {}).get("summary", {}).get("research_conclusion", "")),
+        )
+        graded = self.research_grader.grade_day(day)
+        day.research_score = graded.score
+        day.grade = graded.grade
+        self.research_journal.append_day(day)
 
     def _report_id(self) -> str:
         return f"OE-{self.as_of.strftime('%Y%m%d')}-{sha1(self.as_of.isoformat().encode('utf-8')).hexdigest()[:8]}"

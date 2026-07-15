@@ -16,7 +16,7 @@ class ReportBuilder:
         macro_events: list,
         leadership: dict,
         historical_match: dict,
-        version: str = "v1.1.0",
+        version: str = "v1.2.0",
         workflow_id: str | None = None,
         report_id: str | None = None,
         historical_database_version: str = "unknown",

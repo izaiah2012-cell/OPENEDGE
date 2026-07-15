@@ -96,7 +96,7 @@ class RefreshService:
                 "current_bias": current_bias,
                 "current_confidence": current_confidence,
                 "market_regime": current_regime,
-                "version": report.get("Version", "v1.1.0"),
+                "version": report.get("Version", "v1.2.0"),
             }
             self.storage.save_refresh_metadata(payload)
             return payload

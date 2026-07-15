@@ -23,7 +23,7 @@ from openedge.services.refresh_service import RefreshService
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 LOGS_DIR = BASE_DIR / "logs"
-DISPLAY_VERSION = "v1.1.0"
+DISPLAY_VERSION = "v1.2.0"
 
 
 def _render_health_badge(status: str) -> str:
