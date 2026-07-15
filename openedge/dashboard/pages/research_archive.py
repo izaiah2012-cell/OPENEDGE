@@ -27,6 +27,44 @@ CSV_FILE = BASE_DIR / "openedge_db.csv"
 DISPLAY_VERSION = "v1.1.0"
 
 
+def _report_snapshot(report_data: dict) -> dict:
+    market = report_data.get("market", {}) if isinstance(report_data.get("market", {}), dict) else {}
+    if not market:
+        market = {
+            "bias": report_data.get("Bias", "N/A"),
+            "confidence": report_data.get("Confidence", 0),
+            "market_regime": report_data.get("Market Regime", "N/A"),
+            "opportunity_score": report_data.get("Opportunity Score", 0),
+            "opening_risk": report_data.get("Opening Auction Risk", report_data.get("Opening Risk", 0)),
+        }
+
+    summary = report_data.get("summary", {}) if isinstance(report_data.get("summary", {}), dict) else {}
+    if not summary:
+        raw = report_data.get("Raw Engine Report", {}) if isinstance(report_data.get("Raw Engine Report", {}), dict) else {}
+        summary = raw.get("summary", {}) if isinstance(raw.get("summary", {}), dict) else {}
+
+    historical = report_data.get("historical", {}) if isinstance(report_data.get("historical", {}), dict) else {}
+    if not historical:
+        historical = report_data.get("Historical Match", {}) if isinstance(report_data.get("Historical Match", {}), dict) else {}
+
+    leadership = report_data.get("leadership", {}) if isinstance(report_data.get("leadership", {}), dict) else {}
+    if not leadership:
+        leadership = report_data.get("Leadership", {}) if isinstance(report_data.get("Leadership", {}), dict) else {}
+
+    macro = report_data.get("macro", {}) if isinstance(report_data.get("macro", {}), dict) else {}
+    if not macro:
+        macro = {"today_events": report_data.get("Macro Events", [])}
+
+    return {
+        "market": market,
+        "summary": summary,
+        "historical": historical,
+        "leadership": leadership,
+        "macro": macro,
+        "metadata": report_data.get("Report Metadata", {}) if isinstance(report_data.get("Report Metadata", {}), dict) else {},
+    }
+
+
 def _load_reports() -> list[dict]:
     """Discover and load all JSON reports from reports directory."""
     if not REPORTS_DIR.exists():
@@ -164,18 +202,19 @@ def main():
             if selected_report:
                 try:
                     report_data = json.loads(selected_report["raw_path"].read_text(encoding="utf-8"))
+                    snapshot = _report_snapshot(report_data)
                     
                     st.markdown("---")
                     st.markdown(f"## Report for {selected_date}")
-                    metadata = report_data.get("Report Metadata", {}) if isinstance(report_data, dict) else {}
+                    metadata = snapshot.get("metadata", {})
                     if metadata:
                         st.caption(
                             f"Version {metadata.get('Version', 'N/A')} | Workflow {metadata.get('Workflow ID', 'N/A')} | Report {metadata.get('Report ID', 'N/A')} | Historical DB {metadata.get('Historical Database Version', 'N/A')}"
                         )
                     
                     # Summary metrics
-                    market = report_data.get("market", {})
-                    summary = report_data.get("summary", {})
+                    market = snapshot.get("market", {})
+                    summary = snapshot.get("summary", {})
                     
                     m1, m2, m3, m4, m5 = st.columns(5)
                     m1.metric("Bias", market.get("bias", "N/A"))
@@ -186,7 +225,7 @@ def main():
                     
                     # Morning Brief
                     st.markdown("### 📋 Morning Brief")
-                    st.write(summary.get("executive_summary", "N/A"))
+                    st.write(summary.get("executive_summary", report_data.get("Morning Brief", "N/A")))
                     
                     # AI Summary
                     st.markdown("### 🔬 AI Summary")
@@ -195,17 +234,17 @@ def main():
                         st.markdown("**Market Regime**")
                         st.write(market.get("market_regime", "N/A"))
                         st.markdown("**Leadership Summary**")
-                        st.write(report_data.get("leadership", {}).get("summary", "N/A"))
+                        st.write(snapshot.get("leadership", {}).get("summary", report_data.get("Leadership", {}).get("summary", "N/A")))
                     
                     with col2:
                         st.markdown("**Macro Summary**")
-                        st.write(report_data.get("macro", {}).get("macro_summary", "N/A"))
+                        st.write(snapshot.get("macro", {}).get("macro_summary", report_data.get("Macro Summary", "N/A")))
                         st.markdown("**Today's Focus**")
                         st.write(summary.get("todays_focus", "N/A"))
                     
                     # Historical Match
                     st.markdown("### 📈 Historical Analysis")
-                    historical = report_data.get("historical", {}) or report_data.get("Historical Match", {})
+                    historical = snapshot.get("historical", {})
                     best_match = historical.get("best_match", {})
                     h1, h2, h3, h4 = st.columns(4)
                     h1.metric("Best Match", best_match.get("date", "N/A"))

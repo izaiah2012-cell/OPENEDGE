@@ -84,9 +84,9 @@ def _render_testing_section(st_module):
 def _render_workflow_section(st_module, refresh_service, health_service):
     """Render workflow status and controls."""
     render_section_header(st_module, "🔄 Workflow Automation")
-    
-    workflow_status = health_service.get_workflow_status()
-    
+
+    workflow_status = health_service.storage.load_workflow_status()
+
     w1, w2, w3, w4 = st_module.columns(4)
     render_metric_card(w1, "Last Run", workflow_status.get("last_workflow_run", "N/A"))
     duration = workflow_status.get("workflow_duration_seconds", "N/A")
@@ -131,7 +131,7 @@ def _render_health_section(st_module, health_service):
     render_metric_card(h2, "Market Data", _render_health_badge(health.get("market_provider_status", "unknown")))
     render_metric_card(h3, "Latest Report", "✅ Available" if health.get("latest_report_available") else "❌ Missing")
     render_metric_card(h4, "Storage", _render_health_badge(health.get("storage_status", "unknown")))
-    render_metric_card(h5, "Workflow", _render_health_badge(health.get("workflow_status", "unknown")))
+    render_metric_card(h5, "Workflow", _render_health_badge(health.get("latest_workflow_status", "unknown")))
     
     # Detailed health info
     with st_module.expander("Detailed Health Report", expanded=False):

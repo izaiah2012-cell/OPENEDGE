@@ -17,6 +17,11 @@ try:
 except Exception:  # pragma: no cover
     go = None
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:  # pragma: no cover
+    st_autorefresh = None
+
 from openedge.dashboard.components import (
     inject_styles,
     render_footer,
@@ -505,11 +510,56 @@ def _run_refresh_button(refresh_service):
         st.session_state["oe_refresh_running"] = False
 
 
+def _render_refresh_controls(st_module, refresh_service):
+    if "oe_refresh_seconds" not in st_module.session_state:
+        st_module.session_state["oe_refresh_seconds"] = 30
+
+    interval_options = [15, 30, 60, 120, 300]
+    current_interval = st_module.session_state.get("oe_refresh_seconds", 30)
+    if current_interval not in interval_options:
+        st_module.session_state["oe_refresh_seconds"] = 30
+
+    with st_module.expander("Refresh Controls", expanded=True):
+        st_module.checkbox("Enable auto-refresh", value=st_module.session_state.get("oe_auto_refresh", False), key="oe_auto_refresh")
+        st_module.selectbox(
+            "Auto-refresh interval (seconds)",
+            options=interval_options,
+            key="oe_refresh_seconds",
+        )
+
+        col1, col2 = st_module.columns(2)
+        with col1:
+            if st_module.button("Refresh now"):
+                st_module.rerun()
+        with col2:
+            _run_refresh_button(refresh_service)
+
+        selected_interval = st_module.session_state.get("oe_refresh_seconds", 30)
+        st_module.caption(f"Current interval: {selected_interval}s")
+
+        refresh_status = refresh_service.get_refresh_status()
+        status_cols = st_module.columns(3)
+        status_cols[0].markdown(f"**Last successful refresh:** {refresh_status.get('last_successful_refresh', 'N/A')}")
+        status_cols[1].markdown(f"**Refresh duration:** {refresh_status.get('last_duration_seconds', 'N/A')}s")
+        status_cols[2].markdown(f"**Refresh status:** {'RUNNING' if refresh_status.get('is_running') else refresh_status.get('last_message', 'N/A')}")
+
+
 def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
     inject_styles(st)
 
+    refresh_service = RefreshService(BASE_DIR)
     health_service = HealthService(BASE_DIR)
+
+    _render_refresh_controls(st, refresh_service)
+
+    if st.session_state.get("oe_auto_refresh", False):
+        if st_autorefresh is not None:
+            st_autorefresh(interval=int(st.session_state.get("oe_refresh_seconds", 60)) * 1000, key="oe_dashboard_autorefresh")
+        else:
+            st.info("Auto-refresh is unavailable because streamlit-autorefresh is not installed in this environment.")
+
+    st.divider()
 
     generated_at = datetime.now().astimezone()
 
