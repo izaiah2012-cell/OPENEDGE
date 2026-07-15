@@ -1,0 +1,13 @@
+{
+  "last_workflow_run": "2026-07-15T15:51:52.522580+00:00",
+  "workflow_duration_seconds": 4.97,
+  "last_report_generated": "/workspaces/OPENEDGE/reports/2026-07-15.md",
+  "research_status": "SUCCESS",
+  "research_generated": true,
+  "report_files": {
+    "markdown": "/workspaces/OPENEDGE/reports/2026-07-15.md",
+    "json": "/workspaces/OPENEDGE/reports/2026-07-15.json",
+    "html": "/workspaces/OPENEDGE/reports/2026-07-15.html"
+  },
+  "status": "SUCCESS"
+}

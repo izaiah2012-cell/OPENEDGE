@@ -1,0 +1,42 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.venv-1/
+venv/
+
+# Packaging/build artifacts
+*.egg-info/
+dist/
+build/
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+
+# Generated reports and runtime outputs
+reports/*.md
+reports/*.json
+reports/*.html
+!reports/.gitkeep
+
+# Runtime database / workflow outputs
+database/history/
+database/refresh_metadata.json
+database/workflow_status.json
+database/refresh.lock
+
+# Logs
+logs/
+
+# Research journal (runtime data, not source)
+research_journal.csv

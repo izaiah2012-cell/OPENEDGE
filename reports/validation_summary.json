@@ -1,0 +1,12 @@
+{
+  "total_signals": 19,
+  "correct_signals": 19,
+  "incorrect_signals": 0,
+  "overall_accuracy": 100.0,
+  "rolling_20_accuracy": 100.0,
+  "rolling_50_accuracy": 100.0,
+  "average_confidence": 0.0,
+  "best_performing_regime": "Risk Off",
+  "worst_performing_regime": "Risk Off",
+  "average_historical_similarity": 91.53
+}

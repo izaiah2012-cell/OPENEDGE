@@ -1,0 +1,738 @@
+{
+  "Date": "2026-07-08",
+  "Timestamp": "2026-07-08T20:13:04.494405+00:00",
+  "Market Regime": "Risk Off",
+  "Confidence": 67,
+  "Bias": "BEARISH",
+  "Opening Style": "Neutral Open",
+  "Opportunity Score": 7,
+  "Morning Brief": "OPENEDGE reads a Risk Off backdrop with HIGH risk, confidence 67/100, and bias BEARISH.",
+  "Market Internals": [
+    {
+      "Asset": "SPY",
+      "Price": "745.32",
+      "Daily %": "-0.32%",
+      "Direction": "DOWN"
+    },
+    {
+      "Asset": "QQQ",
+      "Price": "711.44",
+      "Daily %": "+0.28%",
+      "Direction": "UP"
+    },
+    {
+      "Asset": "DIA",
+      "Price": "522.82",
+      "Daily %": "-1.07%",
+      "Direction": "DOWN"
+    },
+    {
+      "Asset": "VIX",
+      "Price": "16.58",
+      "Daily %": "+2.79%",
+      "Direction": "UP"
+    },
+    {
+      "Asset": "US10Y",
+      "Price": "4.57",
+      "Daily %": "+0.88%",
+      "Direction": "UP"
+    },
+    {
+      "Asset": "DXY",
+      "Price": "100.98",
+      "Daily %": "-0.16%",
+      "Direction": "DOWN"
+    },
+    {
+      "Asset": "Gold",
+      "Price": "4,089.30",
+      "Daily %": "-1.35%",
+      "Direction": "DOWN"
+    },
+    {
+      "Asset": "Oil",
+      "Price": "74.20",
+      "Daily %": "+5.34%",
+      "Direction": "UP"
+    },
+    {
+      "Asset": "Bitcoin",
+      "Price": "62,185.89",
+      "Daily %": "-1.76%",
+      "Direction": "DOWN"
+    },
+    {
+      "Asset": "IWM",
+      "Price": "293.53",
+      "Daily %": "-0.90%",
+      "Direction": "DOWN"
+    }
+  ],
+  "Leadership": {
+    "Technology": {
+      "score": 1.04,
+      "momentum_5d": 4.36,
+      "status": "Strong"
+    },
+    "Financials": {
+      "score": -2.16,
+      "momentum_5d": 1.84,
+      "status": "Weak"
+    },
+    "Industrials": {
+      "score": -0.82,
+      "momentum_5d": -6.19,
+      "status": "Neutral"
+    },
+    "Healthcare": {
+      "score": -1.22,
+      "momentum_5d": 2.48,
+      "status": "Weak"
+    },
+    "Consumer": {
+      "score": 0.34,
+      "momentum_5d": 1.32,
+      "status": "Neutral"
+    },
+    "Energy": {
+      "score": 0.29,
+      "momentum_5d": 4.61,
+      "status": "Neutral"
+    }
+  },
+  "Macro Events": [
+    {
+      "time": "08:30 ET",
+      "event": "CPI",
+      "impact": "High"
+    },
+    {
+      "time": "10:00 ET",
+      "event": "ISM Manufacturing",
+      "impact": "Medium"
+    }
+  ],
+  "Historical Match": {
+    "matches": [
+      {
+        "date": "2026-07-02",
+        "similarity": 100.0,
+        "bias": "DOWN",
+        "actual": "DOWN",
+        "correct": 1.0,
+        "confidence_band": "Strong",
+        "recency_factor": 1.12,
+        "feature_deltas": {
+          "risk": 0.0188,
+          "leadership": 0.032,
+          "vix": 0.0,
+          "oar": 0.0,
+          "oos": 0.0254
+        },
+        "why_similar": "Closest on VIX, OAR",
+        "rank": 1
+      },
+      {
+        "date": "2026-07-02",
+        "similarity": 93.59,
+        "bias": "DOWN",
+        "actual": "DOWN",
+        "correct": 1.0,
+        "confidence_band": "Strong",
+        "recency_factor": 1.053,
+        "feature_deltas": {
+          "risk": 0.1081,
+          "leadership": 0.0089,
+          "vix": 0.0,
+          "oar": 0.0,
+          "oos": 0.0496
+        },
+        "why_similar": "Closest on VIX, OAR",
+        "rank": 2
+      },
+      {
+        "date": "2026-07-02",
+        "similarity": 88.5,
+        "bias": "DOWN",
+        "actual": "DOWN",
+        "correct": 1.0,
+        "confidence_band": "Strong",
+        "recency_factor": 1.08,
+        "feature_deltas": {
+          "risk": 0.1706,
+          "leadership": 0.0502,
+          "vix": 0.0,
+          "oar": 0.0,
+          "oos": 0.1104
+        },
+        "why_similar": "Closest on VIX, OAR",
+        "rank": 3
+      },
+      {
+        "date": "2026-07-02",
+        "similarity": 87.87,
+        "bias": "DOWN",
+        "actual": "DOWN",
+        "correct": 1.0,
+        "confidence_band": "Strong",
+        "recency_factor": 1.1,
+        "feature_deltas": {
+          "risk": 0.0721,
+          "leadership": 0.1934,
+          "vix": 0.0,
+          "oar": 0.0,
+          "oos": 0.1328
+        },
+        "why_similar": "Closest on VIX, OAR",
+        "rank": 4
+      },
+      {
+        "date": "2026-07-02",
+        "similarity": 87.68,
+        "bias": "DOWN",
+        "actual": "DOWN",
+        "correct": 1.0,
+        "confidence_band": "Strong",
+        "recency_factor": 1.093,
+        "feature_deltas": {
+          "risk": 0.0659,
+          "leadership": 0.1925,
+          "vix": 0.0,
+          "oar": 0.0,
+          "oos": 0.1292
+        },
+        "why_similar": "Closest on VIX, OAR",
+        "rank": 5
+      }
+    ],
+    "best_match": {
+      "date": "2026-07-02",
+      "similarity": 100.0,
+      "bias": "DOWN",
+      "actual": "DOWN",
+      "correct": 1.0,
+      "confidence_band": "Strong",
+      "recency_factor": 1.12,
+      "feature_deltas": {
+        "risk": 0.0188,
+        "leadership": 0.032,
+        "vix": 0.0,
+        "oar": 0.0,
+        "oos": 0.0254
+      },
+      "why_similar": "Closest on VIX, OAR",
+      "rank": 1
+    },
+    "average_similarity": 91.53,
+    "most_common_outcome": "DOWN",
+    "message": ""
+  },
+  "Performance Summary": {
+    "signals_tracked": 19,
+    "historical_accuracy": 100.0,
+    "correct_calls": 19,
+    "incorrect_calls": 0,
+    "rolling_accuracy": [
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      },
+      {
+        "date": "2026-07-02",
+        "accuracy": 100.0
+      }
+    ],
+    "status": "Available"
+  },
+  "Research Conclusion": "Expected path is DOWN with opening style Neutral Open. Macro context: Macro risk is MEDIUM with high-impact focus on CPI.",
+  "Raw Engine Report": {
+    "status": "READY",
+    "market": {
+      "bias": "BEARISH",
+      "market_regime": "Risk Off",
+      "risk_level": "HIGH",
+      "confidence": 67,
+      "opening_style": "Neutral Open",
+      "opening_risk": 4,
+      "opportunity_score": 7,
+      "internals_rows": [
+        {
+          "Asset": "SPY",
+          "Price": "745.32",
+          "Daily %": "-0.32%",
+          "Direction": "DOWN"
+        },
+        {
+          "Asset": "QQQ",
+          "Price": "711.44",
+          "Daily %": "+0.28%",
+          "Direction": "UP"
+        },
+        {
+          "Asset": "DIA",
+          "Price": "522.82",
+          "Daily %": "-1.07%",
+          "Direction": "DOWN"
+        },
+        {
+          "Asset": "VIX",
+          "Price": "16.58",
+          "Daily %": "+2.79%",
+          "Direction": "UP"
+        },
+        {
+          "Asset": "US10Y",
+          "Price": "4.57",
+          "Daily %": "+0.88%",
+          "Direction": "UP"
+        },
+        {
+          "Asset": "DXY",
+          "Price": "100.98",
+          "Daily %": "-0.16%",
+          "Direction": "DOWN"
+        },
+        {
+          "Asset": "Gold",
+          "Price": "4,089.30",
+          "Daily %": "-1.35%",
+          "Direction": "DOWN"
+        },
+        {
+          "Asset": "Oil",
+          "Price": "74.20",
+          "Daily %": "+5.34%",
+          "Direction": "UP"
+        },
+        {
+          "Asset": "Bitcoin",
+          "Price": "62,185.89",
+          "Daily %": "-1.76%",
+          "Direction": "DOWN"
+        },
+        {
+          "Asset": "IWM",
+          "Price": "293.53",
+          "Daily %": "-0.90%",
+          "Direction": "DOWN"
+        }
+      ],
+      "internals_summary": "Overnight internals show 4 assets up and 6 down, with 0 temporarily unavailable. The average move across available assets is +0.37%, suggesting risk appetite leaning constructive. Cross-asset direction should be monitored alongside early U.S. cash-session participation for confirmation."
+    },
+    "macro": {
+      "macro_risk": "MEDIUM",
+      "today_events": [
+        {
+          "Time": "08:30 ET",
+          "Event": "CPI",
+          "Impact": "High"
+        },
+        {
+          "Time": "10:00 ET",
+          "Event": "ISM Manufacturing",
+          "Impact": "Medium"
+        }
+      ],
+      "summary": "Macro risk is MEDIUM with high-impact focus on CPI."
+    },
+    "leadership": {
+      "strongest_sector": {
+        "sector": "Technology",
+        "status": "Strong",
+        "score": 1.04
+      },
+      "weakest_sector": {
+        "sector": "Financials",
+        "status": "Weak",
+        "score": -2.16
+      },
+      "sector_summary": "Leadership is led by Technology (Strong) while Financials is the weakest pocket (Weak).",
+      "rows": [
+        {
+          "Sector": "Technology",
+          "Score (%)": 1.04,
+          "5D Momentum (%)": 4.36,
+          "Status": "Strong"
+        },
+        {
+          "Sector": "Financials",
+          "Score (%)": -2.16,
+          "5D Momentum (%)": 1.84,
+          "Status": "Weak"
+        },
+        {
+          "Sector": "Industrials",
+          "Score (%)": -0.82,
+          "5D Momentum (%)": -6.19,
+          "Status": "Neutral"
+        },
+        {
+          "Sector": "Healthcare",
+          "Score (%)": -1.22,
+          "5D Momentum (%)": 2.48,
+          "Status": "Weak"
+        },
+        {
+          "Sector": "Consumer",
+          "Score (%)": 0.34,
+          "5D Momentum (%)": 1.32,
+          "Status": "Neutral"
+        },
+        {
+          "Sector": "Energy",
+          "Score (%)": 0.29,
+          "5D Momentum (%)": 4.61,
+          "Status": "Neutral"
+        }
+      ]
+    },
+    "historical": {
+      "best_match": {
+        "date": "2026-07-02",
+        "similarity": 100.0,
+        "bias": "DOWN",
+        "actual": "DOWN",
+        "correct": 1.0,
+        "confidence_band": "Strong",
+        "recency_factor": 1.12,
+        "feature_deltas": {
+          "risk": 0.0188,
+          "leadership": 0.032,
+          "vix": 0.0,
+          "oar": 0.0,
+          "oos": 0.0254
+        },
+        "why_similar": "Closest on VIX, OAR",
+        "rank": 1
+      },
+      "historical_confidence": "Strong",
+      "expected_outcome": "DOWN",
+      "rows": [
+        {
+          "Rank": 1,
+          "Date": "2026-07-02",
+          "Similarity %": 100.0,
+          "Confidence Band": "Strong",
+          "Bias": "DOWN",
+          "Actual": "DOWN",
+          "Correct": 1.0,
+          "Why Similar": "Closest on VIX, OAR"
+        },
+        {
+          "Rank": 2,
+          "Date": "2026-07-02",
+          "Similarity %": 93.59,
+          "Confidence Band": "Strong",
+          "Bias": "DOWN",
+          "Actual": "DOWN",
+          "Correct": 1.0,
+          "Why Similar": "Closest on VIX, OAR"
+        },
+        {
+          "Rank": 3,
+          "Date": "2026-07-02",
+          "Similarity %": 88.5,
+          "Confidence Band": "Strong",
+          "Bias": "DOWN",
+          "Actual": "DOWN",
+          "Correct": 1.0,
+          "Why Similar": "Closest on VIX, OAR"
+        },
+        {
+          "Rank": 4,
+          "Date": "2026-07-02",
+          "Similarity %": 87.87,
+          "Confidence Band": "Strong",
+          "Bias": "DOWN",
+          "Actual": "DOWN",
+          "Correct": 1.0,
+          "Why Similar": "Closest on VIX, OAR"
+        },
+        {
+          "Rank": 5,
+          "Date": "2026-07-02",
+          "Similarity %": 87.68,
+          "Confidence Band": "Strong",
+          "Bias": "DOWN",
+          "Actual": "DOWN",
+          "Correct": 1.0,
+          "Why Similar": "Closest on VIX, OAR"
+        }
+      ],
+      "average_similarity": 91.53,
+      "most_common_outcome": "DOWN",
+      "message": "",
+      "historical_research_explanation": "\nOPENEDGE AI ANALYSIS\n\nMarket Outlook:\nBearish\n\n\nKey Drivers:\n\n\u2713 Market risk appetite is weakening\n\u2713 Leadership stocks are under pressure\n\nHistorical Result:\nCorrect: 1.0"
+    },
+    "summary": {
+      "executive_summary": "OPENEDGE reads a Risk Off backdrop with HIGH risk, confidence 67/100, and bias BEARISH.",
+      "key_risks": [
+        "Overall market risk regime is elevated"
+      ],
+      "strengths": [
+        "Leadership supported by Technology",
+        "Historical analog confidence is strong"
+      ],
+      "weaknesses": [
+        "Core index bias is defensive",
+        "Relative weakness in Financials",
+        "Risk conditions can reduce setup quality"
+      ],
+      "todays_focus": "Prioritize capital preservation and controlled exposure into early volatility.",
+      "research_conclusion": "Expected path is DOWN with opening style Neutral Open. Macro context: Macro risk is MEDIUM with high-impact focus on CPI.",
+      "system_status": {
+        "market_data": "Healthy",
+        "research_engine": "Healthy",
+        "historical_database": "Healthy",
+        "dashboard": "Healthy",
+        "tests": "Verified"
+      },
+      "performance": {
+        "signals_tracked": 19,
+        "historical_accuracy": 100.0,
+        "correct_calls": 19,
+        "incorrect_calls": 0,
+        "rolling_accuracy": [
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          },
+          {
+            "date": "2026-07-02",
+            "accuracy": 100.0
+          }
+        ],
+        "status": "Available"
+      },
+      "narrative": "OPENEDGE reads a Risk Off environment with HIGH risk, 67/100 confidence, and bias BEARISH. Opening style is Neutral Open with opening risk 4/10 and opportunity score 7/10. Highest-probability directional path is DOWN. Focus: Prioritize capital preservation and controlled exposure into early volatility."
+    },
+    "performance": {
+      "signals_tracked": 19,
+      "historical_accuracy": 100.0,
+      "correct_calls": 19,
+      "incorrect_calls": 0,
+      "rolling_accuracy": [
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        },
+        {
+          "date": "2026-07-02",
+          "accuracy": 100.0
+        }
+      ],
+      "status": "Available"
+    },
+    "latest_signal": {
+      "Latest Bias": "DOWN",
+      "Actual": "DOWN",
+      "VIX Score": 5,
+      "Correct": 1.0
+    }
+  }
+}

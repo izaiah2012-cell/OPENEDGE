@@ -1,10 +1,33 @@
 import argparse
-import yfinance as yf
+import json
+import os
+import shlex
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from urllib.parse import quote
+import webbrowser
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-import os
-import time
+import yfinance as yf
+
+from openedge.engines.history_engine import get_historical_matches
+from openedge.engines.macro_engine import calculate_macro_risk, get_macro_events
+from openedge.engines.research_writer import generate_research_summary
+from openedge.validation.journal import backfill_from_db, dedupe_entries
+from openedge.validation.validation_engine import ValidationEngine
+from openedge.workflows import MorningWorkflow
+
+BASE_DIR = Path(__file__).resolve().parent
+DB_FILE = BASE_DIR / "openedge_db.csv"
+REPORTS_DIR = BASE_DIR / "reports"
+REPORT_HTTP_PORT = 8765
+
 # -----------------------------
 # DATA
 # -----------------------------
@@ -47,11 +70,6 @@ def classify_open(gap, range5):
     return "NEUTRAL OPEN"
 
 
-def similarity(a, b):
-    # simple weighted distance
-    return abs(a["gap_pct"] - b["gap_pct"]) + abs(a["range_5m"] - b["range_5m"])
-
-
 def similar_day_probability(df, today):
     scores = []
 
@@ -82,9 +100,6 @@ def compute_open_type():
     if open_data:
         return classify_open(open_data["gap_pct"], open_data["range_5m"])
     return "NO DATA"
-
-
-open_type = compute_open_type()
 
 
 def price(ticker):
@@ -176,40 +191,43 @@ def normalize_dataframe(df):
 
 
 def migrate_database(file):
-    backup = file + ".bak"
-    df = pd.read_csv(file, on_bad_lines="skip")
+    file_path = Path(file)
+    backup = file_path.with_suffix(file_path.suffix + ".bak")
+    df = pd.read_csv(file_path, on_bad_lines="skip")
     df = normalize_dataframe(df)
-    os.rename(file, backup)
-    df.to_csv(file, index=False, columns=CANONICAL_COLUMNS)
+    if backup.exists():
+        backup.unlink()
+    file_path.rename(backup)
+    df.to_csv(file_path, index=False, columns=CANONICAL_COLUMNS)
     print(f"Migrated legacy dataset to new schema and backed up original to {backup}.")
     return df
 
 
 def save(row):
-    file = "openedge_db.csv"
     df_row = pd.DataFrame([row], columns=CANONICAL_COLUMNS)
 
-    if os.path.exists(file):
-        with open(file, "r", encoding="utf-8") as f:
+    if DB_FILE.exists():
+        with DB_FILE.open("r", encoding="utf-8") as f:
             existing_header = f.readline().strip().split(",")
 
         if existing_header != CANONICAL_COLUMNS:
-            migrate_database(file)
+            migrate_database(DB_FILE)
 
-        df_row.to_csv(file, mode="a", header=False, index=False, columns=CANONICAL_COLUMNS)
+        df_row.to_csv(DB_FILE, mode="a", header=False, index=False, columns=CANONICAL_COLUMNS)
     else:
-        df_row.to_csv(file, index=False, columns=CANONICAL_COLUMNS)
+        df_row.to_csv(DB_FILE, index=False, columns=CANONICAL_COLUMNS)
 
 
 def load_database(file):
+    file_path = Path(file)
     try:
-        df = pd.read_csv(file)
+        df = pd.read_csv(file_path)
     except pd.errors.ParserError:
-        df = pd.read_csv(file, on_bad_lines="skip")
+        df = pd.read_csv(file_path, on_bad_lines="skip")
 
     if set(df.columns) != set(CANONICAL_COLUMNS):
         df = normalize_dataframe(df)
-        df.to_csv(file, index=False, columns=CANONICAL_COLUMNS)
+        df.to_csv(file_path, index=False, columns=CANONICAL_COLUMNS)
 
     return df
 
@@ -254,8 +272,8 @@ def run():
         row["range_5m"] = open_data["range_5m"]
         row["open_type"] = open_type
 
-    if os.path.exists("openedge_db.csv"):
-        df = load_database("openedge_db.csv")
+    if DB_FILE.exists():
+        df = load_database(DB_FILE)
     else:
         df = pd.DataFrame(columns=CANONICAL_COLUMNS)
 
@@ -301,13 +319,11 @@ def run():
 
 
 def analyze():
-    file = "openedge_db.csv"
-
-    if not os.path.exists(file):
+    if not DB_FILE.exists():
         print("No dataset found yet.")
         return
 
-    df = load_database(file)
+    df = load_database(DB_FILE)
 
     if len(df) == 0:
         print("Dataset empty.")
@@ -415,30 +431,343 @@ def analyze():
         else:
             print("\nNO EDGE (at or below random baseline)")
 
+    latest = df.iloc[-1].to_dict()
+
+    if latest.get("bias") == "UP" and float(latest.get("vix", 0) or 0) <= 5:
+        market_regime = "Risk On"
+    elif latest.get("bias") == "DOWN" or float(latest.get("vix", 0) or 0) >= 7:
+        market_regime = "Risk Off"
+    else:
+        market_regime = "Neutral"
+
+    macro_events = get_macro_events()
+    macro_risk = calculate_macro_risk(macro_events)
+    historical = get_historical_matches(DB_FILE, top_n=5)
+
+    summary_payload = {
+        "market_regime": market_regime,
+        "confidence": 65 if latest.get("bias") in ("UP", "DOWN") else 55,
+        "opening_auction_risk": latest.get("oar", "N/A"),
+        "opportunity_score": latest.get("oos", "N/A"),
+        "bias": latest.get("bias", "N/A"),
+        "leadership": {"Aggregate": {"score": latest.get("leadership", "N/A"), "status": "Observed"}},
+        "macro_events": macro_events,
+        "macro_risk": macro_risk,
+        "historical_match": historical.get("best_match", {}),
+        "historical_similarity": historical.get("average_similarity", 0.0),
+    }
+
+    report_text = generate_research_summary(summary_payload)
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    report_file = REPORTS_DIR / f"{datetime.now().strftime('%Y-%m-%d')}_research.md"
+    report_file.write_text(report_text, encoding="utf-8")
+
+    print("\nResearch report generated.")
+    print(f"Saved to:\n{report_file}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="OPENEDGE signal generator and analytics")
-    parser.add_argument("mode", nargs="?", default="run", choices=["run", "analyze", "edge", "feature"],
-                        help="run the signal generator, analyze saved results, test edge accuracy, or run feature importance")
+    parser.add_argument("mode", nargs="?", default="run", choices=["run", "analyze", "edge", "feature", "morning", "validate"],
+                        help="run the signal generator, analyze saved results, test edge accuracy, run feature importance, execute morning automation, or print validation metrics")
+    parser.add_argument("--export-json", dest="export_json", default="",
+                        help="when mode is validate, optionally write summary metrics JSON to this path")
+    parser.add_argument("--backfill-journal", action="store_true",
+                        help="when mode is validate, append missing journal rows from openedge_db.csv without overwriting existing entries")
+    parser.add_argument("--dedupe-journal", action="store_true",
+                        help="when mode is validate, deduplicate research_journal.csv by date and keep the latest row for each date")
+    parser.add_argument("--dedupe-mode", choices=["date", "date-bias"], default="date",
+                        help="when --dedupe-journal is set, choose dedupe key strategy")
+    parser.add_argument("--open-report-url", action="store_true",
+                        help="print the best URL for the latest HTML report and exit")
     args = parser.parse_args()
+
+    if args.open_report_url:
+        report_url = latest_morning_report_url()
+        if report_url:
+            print(report_url)
+        else:
+            print(f"Morning report not found in: {REPORTS_DIR}")
+        return
 
     if args.mode == "analyze":
         analyze()
+    elif args.mode == "morning":
+        MorningWorkflow().run()
+        open_latest_morning_report()
+    elif args.mode == "validate":
+        validate(
+            export_json=args.export_json,
+            backfill_journal=args.backfill_journal,
+            dedupe_journal=args.dedupe_journal,
+            dedupe_mode=args.dedupe_mode,
+        )
     elif args.mode == "edge":
-        file = "openedge_db.csv"
-        if not os.path.exists(file):
+        if not DB_FILE.exists():
             print("No dataset found yet.")
             return
-        df = load_database(file)
+        df = load_database(DB_FILE)
         edge_evaluation(df)
     elif args.mode == "feature":
-        file = "openedge_db.csv"
-        if not os.path.exists(file):
+        if not DB_FILE.exists():
             print("No dataset found yet.")
             return
         feature_importance()
     else:
         run()
+
+
+def _is_port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def _ensure_reports_http_server(port: int) -> bool:
+    if _is_port_open("127.0.0.1", port):
+        return True
+
+    try:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "http.server",
+                "--bind",
+                "0.0.0.0",
+                "--directory",
+                str(REPORTS_DIR),
+                str(port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        return False
+
+    # Give the HTTP server a brief moment to bind.
+    for _ in range(10):
+        if _is_port_open("127.0.0.1", port):
+            return True
+        time.sleep(0.1)
+
+    return False
+
+
+def _codespaces_report_url(report_name: str, port: int) -> str | None:
+    gh_bin = shutil.which("gh")
+    codespace_name = os.environ.get("CODESPACE_NAME", "").strip()
+    forwarding_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "").strip()
+
+    # Prefer the canonical forwarded URL exposed by the GitHub CLI when available.
+    if gh_bin and codespace_name:
+        try:
+            result = subprocess.run(
+                [
+                    gh_bin,
+                    "codespace",
+                    "ports",
+                    "-c",
+                    codespace_name,
+                    "--json",
+                    "sourcePort,browseUrl",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout:
+                ports = json.loads(result.stdout)
+                for item in ports:
+                    if int(item.get("sourcePort", -1)) == int(port):
+                        browse_url = str(item.get("browseUrl", "")).strip()
+                        if browse_url:
+                            return f"{browse_url.rstrip('/')}/{report_name}"
+        except Exception:
+            pass
+
+    if not codespace_name or not forwarding_domain:
+        return None
+
+    return f"https://{codespace_name}-{port}.{forwarding_domain}/{report_name}"
+
+
+def _codespaces_proxy_report_url(report_name: str, port: int) -> str | None:
+    codespace_name = os.environ.get("CODESPACE_NAME", "").strip()
+    if not codespace_name:
+        return None
+
+    # In browser-based Codespaces, github.dev proxy URLs are often more reliable
+    # than direct app.github.dev forwarded links.
+    return f"https://{codespace_name}.github.dev/proxy/{port}/{report_name}"
+
+
+def _open_with_browser_env(url: str) -> bool:
+    browser_cmd = os.environ.get("BROWSER", "").strip()
+    if not browser_cmd:
+        return False
+
+    try:
+        cmd_parts = shlex.split(browser_cmd)
+        if "%s" in cmd_parts:
+            cmd = [url if part == "%s" else part for part in cmd_parts]
+        else:
+            cmd = cmd_parts + [url]
+        result = subprocess.run(cmd, check=False)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _open_report_url(url: str) -> bool:
+    if _open_with_browser_env(url):
+        return True
+
+    try:
+        if webbrowser.open(url, new=2):
+            return True
+    except Exception:
+        pass
+
+    opener = shutil.which("xdg-open")
+    if not opener:
+        return False
+
+    try:
+        result = subprocess.run([opener, url], check=False)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _latest_html_report(preferred_date: str) -> Path | None:
+    dated_report = REPORTS_DIR / f"{preferred_date}.html"
+    if dated_report.exists():
+        return dated_report
+
+    status_file = BASE_DIR / "database" / "workflow_status.json"
+    if status_file.exists():
+        try:
+            status_payload = json.loads(status_file.read_text(encoding="utf-8"))
+            html_from_status = Path(status_payload.get("report_files", {}).get("html", ""))
+            if html_from_status.exists():
+                return html_from_status
+        except Exception:
+            pass
+
+    html_reports = sorted(REPORTS_DIR.glob("*.html"), reverse=True)
+    if html_reports:
+        return html_reports[0]
+
+    return None
+
+
+def _report_url_candidates(report_path: Path, running_remote: bool) -> list[str]:
+    candidates: list[str] = []
+
+    def add_candidate(url: str):
+        if url and url not in candidates:
+            candidates.append(url)
+
+    if running_remote and _ensure_reports_http_server(REPORT_HTTP_PORT):
+        # Prefer github.dev proxy first for browser-based Codespaces sessions.
+        add_candidate(_codespaces_proxy_report_url(report_path.name, REPORT_HTTP_PORT) or "")
+        # Then try localhost forwarding paths.
+        add_candidate(f"http://localhost:{REPORT_HTTP_PORT}/{report_path.name}")
+        add_candidate(f"http://127.0.0.1:{REPORT_HTTP_PORT}/{report_path.name}")
+        add_candidate(_codespaces_report_url(report_path.name, REPORT_HTTP_PORT) or "")
+
+    add_candidate(report_path.resolve().as_uri())
+    return candidates
+
+
+def _inline_report_data_url(report_path: Path) -> str | None:
+    try:
+        html = report_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    # Data URL fallback bypasses remote port-forwarding failures.
+    return "data:text/html;charset=utf-8," + quote(html)
+
+
+def latest_morning_report_url() -> str | None:
+    report_path = _latest_html_report(datetime.now().strftime('%Y-%m-%d'))
+
+    if not report_path:
+        return None
+
+    running_remote = any(
+        os.environ.get(var)
+        for var in ("VSCODE_IPC_HOOK_CLI", "REMOTE_CONTAINERS", "CODESPACES")
+    )
+    url_candidates = _report_url_candidates(report_path, running_remote)
+
+    if running_remote:
+        for url in url_candidates:
+            if url.startswith("https://") and (
+                ".github.dev/proxy/" in url or ".app.github.dev/" in url
+            ):
+                return url
+
+    return url_candidates[0] if url_candidates else report_path.resolve().as_uri()
+
+
+def open_latest_morning_report():
+    report_path = _latest_html_report(datetime.now().strftime('%Y-%m-%d'))
+
+    if not report_path:
+        print(f"Morning report not found in: {REPORTS_DIR}")
+        return
+
+    opened = False
+    opened_url = ""
+    opened_in_editor = False
+    running_remote = any(
+        os.environ.get(var)
+        for var in ("VSCODE_IPC_HOOK_CLI", "REMOTE_CONTAINERS", "CODESPACES")
+    )
+    url_candidates = _report_url_candidates(report_path, running_remote)
+
+    inline_url = _inline_report_data_url(report_path) if running_remote else None
+    if inline_url:
+        # Keep data URL as a final fallback only; some remote browser bridges
+        # acknowledge it but do not actually render a new tab.
+        url_candidates = url_candidates + [inline_url]
+
+    for candidate in url_candidates:
+        if _open_report_url(candidate):
+            opened = True
+            opened_url = candidate
+            break
+
+    if not opened:
+        code_bin = shutil.which("code")
+        if code_bin:
+            try:
+                result = subprocess.run([code_bin, "-r", str(report_path.resolve())], check=False)
+                opened_in_editor = result.returncode == 0
+            except Exception:
+                opened_in_editor = False
+
+    if opened:
+        print(f"Opened report in browser: {opened_url}")
+    elif opened_in_editor:
+        print(f"Opened report in VS Code editor: {report_path.resolve()}")
+    else:
+        print("Browser launch failed in this environment.")
+        if url_candidates:
+            print(f"Open manually with:\n$BROWSER {url_candidates[0]}")
+        print(
+            "If running in a dev container, serve reports over HTTP for external browser access:\n"
+            "python -m http.server --directory reports 8765"
+        )
 
 
 def edge_evaluation(df):
@@ -467,13 +796,11 @@ def edge_evaluation(df):
 
 
 def feature_importance():
-    file = "openedge_db.csv"
-
-    if not os.path.exists(file):
+    if not DB_FILE.exists():
         print("No dataset found")
         return
 
-    df = load_database(file)
+    df = load_database(DB_FILE)
 
     if "correct" not in df.columns:
         print("No correctness column found")
@@ -568,6 +895,41 @@ def score_to_prob(score):
         return {"UP": 0.35, "DOWN": 0.65}
     else:
         return {"UP": 0.5, "DOWN": 0.5}
+
+
+def validate(
+    export_json: str = "",
+    backfill_journal: bool = False,
+    dedupe_journal: bool = False,
+    dedupe_mode: str = "date",
+):
+    journal_path = BASE_DIR / "research_journal.csv"
+    if backfill_journal:
+        added = backfill_from_db(DB_FILE, journal_path, reports_dir=REPORTS_DIR)
+        print(f"Backfill appended {added} journal row(s).")
+    if dedupe_journal:
+        removed = dedupe_entries(journal_path, mode=dedupe_mode)
+        print(f"Dedupe ({dedupe_mode}) removed {removed} duplicate journal row(s).")
+
+    engine = ValidationEngine(db_path=DB_FILE, journal_path=BASE_DIR / "research_journal.csv", reports_dir=REPORTS_DIR)
+    metrics = engine.summary()
+
+    print("\n========================")
+    print("Validation Summary")
+    print("========================")
+    print(f"Overall Accuracy: {metrics['overall_accuracy']:.2f}%")
+    print(f"Rolling Accuracy: {float(metrics['rolling_20_accuracy']):.2f}%")
+    print(f"Best Regime: {metrics['best_performing_regime']}")
+    print(f"Worst Regime: {metrics['worst_performing_regime']}")
+    print(f"Average Confidence: {float(metrics['average_confidence']):.2f}")
+
+    if export_json:
+        output_path = Path(export_json)
+        if not output_path.is_absolute():
+            output_path = BASE_DIR / output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+        print(f"Validation metrics exported to: {output_path}")
 
 
 if __name__ == "__main__":

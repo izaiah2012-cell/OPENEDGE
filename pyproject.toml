@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openedge"
+version = "1.0.0"
+description = "OPENEDGE: Research Before Risk"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "streamlit>=1.58.0,<2.0.0",
+    "streamlit-autorefresh>=1.0.1,<2.0.0",
+    "yfinance>=0.2.66,<1.0.0",
+    "numpy>=2.0.0,<3.0.0",
+    "pandas>=2.0.0,<3.0.0",
+    "plotly>=5.24.0,<6.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0,<10.0.0",
+]
+
+[tool.setuptools]
+packages = {find = {include = ["openedge*"]}}
+
+[tool.setuptools.package-data]
