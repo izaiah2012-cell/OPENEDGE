@@ -12,6 +12,7 @@ if _repo_root not in _sys.path:
     _sys.path.insert(0, _repo_root)
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -27,8 +28,24 @@ CSV_FILE = BASE_DIR / "openedge_db.csv"
 DISPLAY_VERSION = "v1.1.0"
 
 
+def _extract_report_date(report_file: Path) -> str | None:
+    stem = report_file.stem
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", stem):
+        return stem
+
+    if stem.endswith("_research"):
+        candidate = stem.removesuffix("_research")
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", candidate):
+            return candidate
+
+    return None
+
+
 def _report_snapshot(report_data: dict) -> dict:
+    raw_report = report_data.get("Raw Engine Report", {}) if isinstance(report_data.get("Raw Engine Report", {}), dict) else {}
     market = report_data.get("market", {}) if isinstance(report_data.get("market", {}), dict) else {}
+    if not market and isinstance(raw_report.get("market", {}), dict):
+        market = raw_report.get("market", {})
     if not market:
         market = {
             "bias": report_data.get("Bias", "N/A"),
@@ -40,8 +57,7 @@ def _report_snapshot(report_data: dict) -> dict:
 
     summary = report_data.get("summary", {}) if isinstance(report_data.get("summary", {}), dict) else {}
     if not summary:
-        raw = report_data.get("Raw Engine Report", {}) if isinstance(report_data.get("Raw Engine Report", {}), dict) else {}
-        summary = raw.get("summary", {}) if isinstance(raw.get("summary", {}), dict) else {}
+        summary = raw_report.get("summary", {}) if isinstance(raw_report.get("summary", {}), dict) else {}
 
     historical = report_data.get("historical", {}) if isinstance(report_data.get("historical", {}), dict) else {}
     if not historical:
@@ -49,11 +65,19 @@ def _report_snapshot(report_data: dict) -> dict:
 
     leadership = report_data.get("leadership", {}) if isinstance(report_data.get("leadership", {}), dict) else {}
     if not leadership:
-        leadership = report_data.get("Leadership", {}) if isinstance(report_data.get("Leadership", {}), dict) else {}
+        leadership = raw_report.get("leadership", {}) if isinstance(raw_report.get("leadership", {}), dict) else {}
+    if isinstance(leadership, dict) and not leadership.get("summary"):
+        leadership_summary = raw_report.get("leadership", {}).get("summary") if isinstance(raw_report.get("leadership", {}), dict) else None
+        if leadership_summary:
+            leadership = {**leadership, "summary": leadership_summary}
 
     macro = report_data.get("macro", {}) if isinstance(report_data.get("macro", {}), dict) else {}
     if not macro:
-        macro = {"today_events": report_data.get("Macro Events", [])}
+        macro = raw_report.get("macro", {}) if isinstance(raw_report.get("macro", {}), dict) else {"today_events": report_data.get("Macro Events", [])}
+    if isinstance(macro, dict) and not macro.get("macro_summary"):
+        macro_summary = raw_report.get("macro", {}).get("macro_summary") if isinstance(raw_report.get("macro", {}), dict) else None
+        if macro_summary:
+            macro = {**macro, "macro_summary": macro_summary}
 
     return {
         "market": market,
@@ -74,7 +98,9 @@ def _load_reports() -> list[dict]:
     for report_file in sorted(REPORTS_DIR.glob("*.json"), reverse=True):
         try:
             report_data = json.loads(report_file.read_text(encoding="utf-8"))
-            date_str = report_file.stem.split("_")[0]  # Extract YYYY-MM-DD from filename
+            date_str = _extract_report_date(report_file)
+            if not date_str:
+                continue
             
             # Extract key metrics
             market = report_data.get("market", {})
@@ -113,8 +139,20 @@ def main():
 
     # Filters
     if all_reports:
-        min_date = datetime.strptime(all_reports[-1]["date"], "%Y-%m-%d").date()
-        max_date = datetime.strptime(all_reports[0]["date"], "%Y-%m-%d").date()
+        parsed_dates = []
+        for report in all_reports:
+            try:
+                parsed_dates.append(datetime.strptime(report["date"], "%Y-%m-%d").date())
+            except Exception:
+                continue
+
+        if parsed_dates:
+            min_date = min(parsed_dates)
+            max_date = max(parsed_dates)
+        else:
+            today = datetime.now().date()
+            min_date = today
+            max_date = today
     else:
         today = datetime.now().date()
         min_date = today
@@ -170,16 +208,23 @@ def main():
             except Exception:
                 report_payload = {}
 
+            raw_report = report_payload.get("Raw Engine Report", {}) if isinstance(report_payload, dict) else {}
+            nested_market = raw_report.get("market", {}) if isinstance(raw_report.get("market", {}), dict) else {}
             historical = report_payload.get("Historical Match", {}) if isinstance(report_payload, dict) else {}
             best_match = historical.get("best_match", {}) if isinstance(historical, dict) else {}
-            similarity = float(best_match.get("similarity", 0.0) or 0.0)
+            similarity = float(best_match.get("similarity", historical.get("average_similarity", 0.0)) or 0.0)
+            confidence_value = report_payload.get("Confidence", 0)
+            bias_value = report_payload.get("Bias", report.get("bias", "N/A"))
+            regime_value = report_payload.get("Market Regime", report.get("market_regime", "N/A"))
+            opportunity_value = report_payload.get("Opportunity Score", nested_market.get("opportunity_score", report.get("opportunity_score", 0)))
+            opening_risk_value = nested_market.get("opening_risk", report.get("opening_risk", 0))
             display_data.append({
                 "📅 Date": report["date"],
-                "📊 Bias": report["bias"],
-                "🎯 Confidence": f"{int(report['confidence'])}%",
-                "🌍 Regime": report["market_regime"],
-                "🎪 Opportunity": f"{report['opportunity_score']}/10",
-                "📈 Risk": f"{report['opening_risk']}/10",
+                "📊 Bias": bias_value,
+                "🎯 Confidence": f"{int(float(confidence_value or 0))}%",
+                "🌍 Regime": regime_value,
+                "🎪 Opportunity": f"{opportunity_value}/10",
+                "📈 Risk": f"{opening_risk_value}/10",
                 "🔗 Similarity": f"{similarity:.1f}%",
             })
         
