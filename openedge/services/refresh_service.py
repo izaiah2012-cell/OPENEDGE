@@ -16,6 +16,23 @@ class RefreshService:
         self.base_dir = Path(base_dir) if base_dir else Path(__file__).resolve().parents[2]
         self.storage = LocalStorage(self.base_dir)
         self.lock_file = self.base_dir / "database" / "refresh.lock"
+        
+        # Initialize metadata if it doesn't exist
+        self._initialize_metadata_if_missing()
+
+    def _initialize_metadata_if_missing(self) -> None:
+        """Initialize refresh metadata file if it doesn't exist."""
+        metadata = self.storage.load_refresh_metadata()
+        if not metadata:
+            default_metadata = {
+                "success": None,
+                "timestamp": datetime.now().astimezone().isoformat(),
+                "last_successful_refresh": "Never",
+                "duration_seconds": 0,
+                "message": "No refresh run yet",
+                "warnings": [],
+            }
+            self.storage.save_refresh_metadata(default_metadata)
 
     def run_refresh(self) -> dict:
         if self.lock_file.exists():
