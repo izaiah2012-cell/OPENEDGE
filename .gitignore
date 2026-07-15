@@ -23,6 +23,20 @@ build/
 .coverage.*
 htmlcov/
 
-# Generated reports
+# Generated reports and runtime outputs
 reports/*.md
+reports/*.json
+reports/*.html
 !reports/.gitkeep
+
+# Runtime database / workflow outputs
+database/history/
+database/refresh_metadata.json
+database/workflow_status.json
+database/refresh.lock
+
+# Logs
+logs/
+
+# Research journal (runtime data, not source)
+research_journal.csv

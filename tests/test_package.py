@@ -49,7 +49,16 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         def markdown(self, *args, **kwargs):
             return None
 
+    class DummySessionState(dict):
+        def __contains__(self, key):
+            return dict.__contains__(self, key)
+
+        def get(self, key, default=None):
+            return dict.get(self, key, default)
+
     class DummyStreamlit:
+        session_state = DummySessionState()
+
         class _DummyCtx:
             def __enter__(self):
                 return self
@@ -81,6 +90,12 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
         def success(self, *args, **kwargs):
             return None
 
+        def warning(self, *args, **kwargs):
+            return None
+
+        def error(self, *args, **kwargs):
+            return None
+
         def write(self, *args, **kwargs):
             return None
 
@@ -100,10 +115,37 @@ def test_dashboard_app_loads_without_raising(monkeypatch):
             return None
 
         def columns(self, count):
-            return [DummyContainer() for _ in range(count)]
+            return [DummyContainer() for _ in range(count if isinstance(count, int) else len(count))]
 
         def container(self, *args, **kwargs):
             return self._DummyCtx()
+
+        def expander(self, *args, **kwargs):
+            return self._DummyCtx()
+
+        def spinner(self, *args, **kwargs):
+            return self._DummyCtx()
+
+        def button(self, *args, **kwargs):
+            return False
+
+        def checkbox(self, *args, **kwargs):
+            return False
+
+        def selectbox(self, *args, **kwargs):
+            options = kwargs.get("options", args[1] if len(args) > 1 else [])
+            return options[0] if options else None
+
+        def toast(self, *args, **kwargs):
+            return None
+
+        def rerun(self, *args, **kwargs):
+            raise StopIteration("rerun called")
+
+        def cache_data(self, *args, **kwargs):
+            def decorator(fn):
+                return fn
+            return decorator
 
     monkeypatch.setattr(dashboard_app, "get_market_snapshot", lambda: {"SPY": {"price": 100.0, "change": 0.5}})
     monkeypatch.setattr(

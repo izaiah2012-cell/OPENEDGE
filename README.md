@@ -142,6 +142,73 @@ Launch the dashboard:
 streamlit run openedge/dashboard/app.py
 ```
 
+## Streamlit Community Cloud Deployment
+
+Production entry point:
+
+`openedge/dashboard/app.py`
+
+Deployment steps:
+- Push repository changes to GitHub.
+- In Streamlit Community Cloud, create a new app from this repository.
+- Set main file path to `openedge/dashboard/app.py`.
+- Add secrets in Streamlit settings using `.streamlit/secrets.toml.example` as a template.
+
+Detailed steps are in `docs/deployment.md`.
+
+## Refresh OPENEDGE Button
+
+The dashboard includes a `Refresh OPENEDGE` button.
+
+When triggered, it:
+- runs the morning refresh service
+- regenerates report outputs
+- clears Streamlit data cache
+- displays refresh success/failure status
+- reruns the dashboard without showing Python traceback text
+
+The dashboard also shows:
+- last successful refresh
+- refresh duration
+- refresh status
+
+## Morning Workflow Automation (GitHub Actions)
+
+Workflow file: `.github/workflows/openedge-morning.yml`
+
+Supports:
+- manual trigger via `workflow_dispatch`
+- scheduled weekday run via cron (UTC)
+
+Current cron:
+- `30 13 * * 1-5` (13:30 UTC, Monday-Friday)
+
+To run manually:
+- open the Actions tab
+- select `OPENEDGE Morning Workflow`
+- click `Run workflow`
+
+Reports are uploaded as workflow artifacts.
+
+## Continuous Tests (GitHub Actions)
+
+Workflow file: `.github/workflows/openedge-tests.yml`
+
+Runs `python -m pytest -q` on pushes and pull requests.
+
+## Storage Model
+
+OPENEDGE now uses a storage abstraction in `openedge/storage/`:
+- `base.py` defines storage interfaces
+- `local_storage.py` provides current implementation
+
+This design allows future PostgreSQL/Supabase storage backends without changing dashboard logic.
+
+## Known Limitations
+
+- Streamlit Community Cloud runtime storage is ephemeral across cold restarts.
+- Local filesystem persistence is suitable for single-runtime operation, but durable production retention should use a persistent backend behind `StorageBackend`.
+
 ## Project Structure
 
 ```text

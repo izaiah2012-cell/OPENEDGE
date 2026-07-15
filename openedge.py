@@ -1,6 +1,14 @@
 import argparse
 import json
 import os
+import shlex
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from urllib.parse import quote
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +26,7 @@ from openedge.workflows import MorningWorkflow
 BASE_DIR = Path(__file__).resolve().parent
 DB_FILE = BASE_DIR / "openedge_db.csv"
 REPORTS_DIR = BASE_DIR / "reports"
+REPORT_HTTP_PORT = 8765
 
 # -----------------------------
 # DATA
@@ -470,12 +479,23 @@ def main():
                         help="when mode is validate, deduplicate research_journal.csv by date and keep the latest row for each date")
     parser.add_argument("--dedupe-mode", choices=["date", "date-bias"], default="date",
                         help="when --dedupe-journal is set, choose dedupe key strategy")
+    parser.add_argument("--open-report-url", action="store_true",
+                        help="print the best URL for the latest HTML report and exit")
     args = parser.parse_args()
+
+    if args.open_report_url:
+        report_url = latest_morning_report_url()
+        if report_url:
+            print(report_url)
+        else:
+            print(f"Morning report not found in: {REPORTS_DIR}")
+        return
 
     if args.mode == "analyze":
         analyze()
     elif args.mode == "morning":
         MorningWorkflow().run()
+        open_latest_morning_report()
     elif args.mode == "validate":
         validate(
             export_json=args.export_json,
@@ -496,6 +516,258 @@ def main():
         feature_importance()
     else:
         run()
+
+
+def _is_port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def _ensure_reports_http_server(port: int) -> bool:
+    if _is_port_open("127.0.0.1", port):
+        return True
+
+    try:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "http.server",
+                "--bind",
+                "0.0.0.0",
+                "--directory",
+                str(REPORTS_DIR),
+                str(port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        return False
+
+    # Give the HTTP server a brief moment to bind.
+    for _ in range(10):
+        if _is_port_open("127.0.0.1", port):
+            return True
+        time.sleep(0.1)
+
+    return False
+
+
+def _codespaces_report_url(report_name: str, port: int) -> str | None:
+    gh_bin = shutil.which("gh")
+    codespace_name = os.environ.get("CODESPACE_NAME", "").strip()
+    forwarding_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "").strip()
+
+    # Prefer the canonical forwarded URL exposed by the GitHub CLI when available.
+    if gh_bin and codespace_name:
+        try:
+            result = subprocess.run(
+                [
+                    gh_bin,
+                    "codespace",
+                    "ports",
+                    "-c",
+                    codespace_name,
+                    "--json",
+                    "sourcePort,browseUrl",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout:
+                ports = json.loads(result.stdout)
+                for item in ports:
+                    if int(item.get("sourcePort", -1)) == int(port):
+                        browse_url = str(item.get("browseUrl", "")).strip()
+                        if browse_url:
+                            return f"{browse_url.rstrip('/')}/{report_name}"
+        except Exception:
+            pass
+
+    if not codespace_name or not forwarding_domain:
+        return None
+
+    return f"https://{codespace_name}-{port}.{forwarding_domain}/{report_name}"
+
+
+def _codespaces_proxy_report_url(report_name: str, port: int) -> str | None:
+    codespace_name = os.environ.get("CODESPACE_NAME", "").strip()
+    if not codespace_name:
+        return None
+
+    # In browser-based Codespaces, github.dev proxy URLs are often more reliable
+    # than direct app.github.dev forwarded links.
+    return f"https://{codespace_name}.github.dev/proxy/{port}/{report_name}"
+
+
+def _open_with_browser_env(url: str) -> bool:
+    browser_cmd = os.environ.get("BROWSER", "").strip()
+    if not browser_cmd:
+        return False
+
+    try:
+        cmd_parts = shlex.split(browser_cmd)
+        if "%s" in cmd_parts:
+            cmd = [url if part == "%s" else part for part in cmd_parts]
+        else:
+            cmd = cmd_parts + [url]
+        result = subprocess.run(cmd, check=False)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _open_report_url(url: str) -> bool:
+    if _open_with_browser_env(url):
+        return True
+
+    try:
+        if webbrowser.open(url, new=2):
+            return True
+    except Exception:
+        pass
+
+    opener = shutil.which("xdg-open")
+    if not opener:
+        return False
+
+    try:
+        result = subprocess.run([opener, url], check=False)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _latest_html_report(preferred_date: str) -> Path | None:
+    dated_report = REPORTS_DIR / f"{preferred_date}.html"
+    if dated_report.exists():
+        return dated_report
+
+    status_file = BASE_DIR / "database" / "workflow_status.json"
+    if status_file.exists():
+        try:
+            status_payload = json.loads(status_file.read_text(encoding="utf-8"))
+            html_from_status = Path(status_payload.get("report_files", {}).get("html", ""))
+            if html_from_status.exists():
+                return html_from_status
+        except Exception:
+            pass
+
+    html_reports = sorted(REPORTS_DIR.glob("*.html"), reverse=True)
+    if html_reports:
+        return html_reports[0]
+
+    return None
+
+
+def _report_url_candidates(report_path: Path, running_remote: bool) -> list[str]:
+    candidates: list[str] = []
+
+    def add_candidate(url: str):
+        if url and url not in candidates:
+            candidates.append(url)
+
+    if running_remote and _ensure_reports_http_server(REPORT_HTTP_PORT):
+        # Prefer github.dev proxy first for browser-based Codespaces sessions.
+        add_candidate(_codespaces_proxy_report_url(report_path.name, REPORT_HTTP_PORT) or "")
+        # Then try localhost forwarding paths.
+        add_candidate(f"http://localhost:{REPORT_HTTP_PORT}/{report_path.name}")
+        add_candidate(f"http://127.0.0.1:{REPORT_HTTP_PORT}/{report_path.name}")
+        add_candidate(_codespaces_report_url(report_path.name, REPORT_HTTP_PORT) or "")
+
+    add_candidate(report_path.resolve().as_uri())
+    return candidates
+
+
+def _inline_report_data_url(report_path: Path) -> str | None:
+    try:
+        html = report_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    # Data URL fallback bypasses remote port-forwarding failures.
+    return "data:text/html;charset=utf-8," + quote(html)
+
+
+def latest_morning_report_url() -> str | None:
+    report_path = _latest_html_report(datetime.now().strftime('%Y-%m-%d'))
+
+    if not report_path:
+        return None
+
+    running_remote = any(
+        os.environ.get(var)
+        for var in ("VSCODE_IPC_HOOK_CLI", "REMOTE_CONTAINERS", "CODESPACES")
+    )
+    url_candidates = _report_url_candidates(report_path, running_remote)
+
+    if running_remote:
+        for url in url_candidates:
+            if url.startswith("https://") and (
+                ".github.dev/proxy/" in url or ".app.github.dev/" in url
+            ):
+                return url
+
+    return url_candidates[0] if url_candidates else report_path.resolve().as_uri()
+
+
+def open_latest_morning_report():
+    report_path = _latest_html_report(datetime.now().strftime('%Y-%m-%d'))
+
+    if not report_path:
+        print(f"Morning report not found in: {REPORTS_DIR}")
+        return
+
+    opened = False
+    opened_url = ""
+    opened_in_editor = False
+    running_remote = any(
+        os.environ.get(var)
+        for var in ("VSCODE_IPC_HOOK_CLI", "REMOTE_CONTAINERS", "CODESPACES")
+    )
+    url_candidates = _report_url_candidates(report_path, running_remote)
+
+    inline_url = _inline_report_data_url(report_path) if running_remote else None
+    if inline_url:
+        # Keep data URL as a final fallback only; some remote browser bridges
+        # acknowledge it but do not actually render a new tab.
+        url_candidates = url_candidates + [inline_url]
+
+    for candidate in url_candidates:
+        if _open_report_url(candidate):
+            opened = True
+            opened_url = candidate
+            break
+
+    if not opened:
+        code_bin = shutil.which("code")
+        if code_bin:
+            try:
+                result = subprocess.run([code_bin, "-r", str(report_path.resolve())], check=False)
+                opened_in_editor = result.returncode == 0
+            except Exception:
+                opened_in_editor = False
+
+    if opened:
+        print(f"Opened report in browser: {opened_url}")
+    elif opened_in_editor:
+        print(f"Opened report in VS Code editor: {report_path.resolve()}")
+    else:
+        print("Browser launch failed in this environment.")
+        if url_candidates:
+            print(f"Open manually with:\n$BROWSER {url_candidates[0]}")
+        print(
+            "If running in a dev container, serve reports over HTTP for external browser access:\n"
+            "python -m http.server --directory reports 8765"
+        )
 
 
 def edge_evaluation(df):

@@ -10,6 +10,11 @@ try:
 except Exception:  # pragma: no cover
     go = None
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:  # pragma: no cover
+    st_autorefresh = None
+
 from openedge.dashboard.components import (
     inject_styles,
     render_footer,
@@ -23,6 +28,9 @@ from openedge.engines.intelligence import IntelligenceEngine
 from openedge.engines.macro_engine import get_macro_events
 from openedge.engines.market_internals import get_market_internals
 from openedge.models.leadership_engine import evaluate_sector_leadership
+from openedge.services import HealthService, RefreshService
+from openedge.storage import LocalStorage
+from openedge.utils import safe_source_call
 from openedge.validation.validation_engine import ValidationEngine
 
 LEADERSHIP_SECTORS = ["Technology", "Financials", "Industrials", "Healthcare", "Consumer", "Energy"]
@@ -33,12 +41,29 @@ VERSION_FILE = BASE_DIR / "VERSION"
 DISPLAY_VERSION = "v1.0.0-beta"
 WORKFLOW_STATUS_FILE = BASE_DIR / "database" / "workflow_status.json"
 JOURNAL_FILE = BASE_DIR / "research_journal.csv"
+STORAGE = LocalStorage(BASE_DIR)
+
+
+def _toast_success(message):
+    toast = getattr(st, "toast", None)
+    if callable(toast):
+        toast(message, icon="✅")
+    else:
+        st.success(message)
+
+
+def _toast_error(message):
+    toast = getattr(st, "toast", None)
+    if callable(toast):
+        toast(message, icon="⚠️")
+    else:
+        st.error(message)
 
 
 def _safe_plotly_chart(st_module, fig):
     plotly_chart = getattr(st_module, "plotly_chart", None)
     if callable(plotly_chart):
-        plotly_chart(fig, use_container_width=True)
+        plotly_chart(fig, width="stretch")
     else:
         st_module.write("Chart view unavailable in this environment.")
 
@@ -95,9 +120,21 @@ def get_market_internals_with_cache():
     if cache_data is None:
         return get_market_internals(), datetime.now()
 
-    @cache_data(ttl=120, show_spinner=False)
+    @cache_data(ttl=60, show_spinner=False)
     def _cached_fetch():
         return get_market_internals(), datetime.now()
+
+    return _cached_fetch()
+
+
+def get_market_snapshot_with_cache():
+    cache_data = getattr(st, "cache_data", None)
+    if cache_data is None:
+        return get_market_snapshot(), datetime.now()
+
+    @cache_data(ttl=60, show_spinner=False)
+    def _cached_fetch():
+        return get_market_snapshot(), datetime.now()
 
     return _cached_fetch()
 
@@ -116,7 +153,7 @@ def load_signal_history():
         return None
 
     try:
-        df = pd.read_csv(CSV_FILE)
+        df = pd.read_csv(CSV_FILE, on_bad_lines="skip")
     except Exception:
         return None
 
@@ -352,17 +389,190 @@ def load_workflow_status():
     }
 
 
+def _cached_report_payload():
+    report = STORAGE.load_latest_report()
+    if isinstance(report, dict):
+        return report
+    return {}
+
+
+def _fallback_market_snapshot():
+    report = _cached_report_payload()
+    market = report.get("Raw Engine Report", {}).get("market", {})
+    rows = market.get("internals_rows", []) if isinstance(market, dict) else []
+    snapshot = {}
+    for row in rows:
+        symbol = row.get("Asset")
+        if not symbol:
+            continue
+        snapshot[symbol] = {
+            "price": row.get("Price", "N/A"),
+            "change": row.get("Daily %", "N/A"),
+            "stale": True,
+        }
+    return snapshot
+
+
+def _fallback_market_internals():
+    report = _cached_report_payload()
+    internals = report.get("Market Internals", [])
+    if isinstance(internals, dict):
+        return internals
+
+    converted = {}
+    for row in internals or []:
+        asset = row.get("Asset")
+        if not asset:
+            continue
+        converted[asset] = {
+            "price": row.get("Price", "N/A"),
+            "daily_change_percent": row.get("Daily %", "N/A"),
+            "direction": row.get("Direction", "N/A"),
+            "stale": True,
+        }
+    return converted
+
+
+def _fallback_macro_events():
+    report = _cached_report_payload()
+    return report.get("Macro Events", [])
+
+
+def _fallback_historical_matches():
+    report = _cached_report_payload()
+    return report.get("Historical Match", {})
+
+
+def _fallback_leadership():
+    report = _cached_report_payload()
+    raw = report.get("Leadership", {})
+    if isinstance(raw, dict) and "rows" in raw:
+        converted = {}
+        for row in raw.get("rows", []):
+            sector = row.get("Sector")
+            if not sector:
+                continue
+            converted[sector] = {
+                "score": row.get("Score (%)", "N/A"),
+                "status": row.get("Status", "Neutral"),
+                "stale": True,
+            }
+        return converted
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def _run_refresh_button(refresh_service):
+    if "oe_refresh_running" not in st.session_state:
+        st.session_state["oe_refresh_running"] = False
+
+    clicked = st.button(
+        "Refresh OPENEDGE",
+        type="primary",
+        disabled=bool(st.session_state.get("oe_refresh_running", False)),
+        width="stretch",
+    )
+    if not clicked:
+        return
+
+    st.session_state["oe_refresh_running"] = True
+    try:
+        with st.spinner("Refreshing OPENEDGE..."):
+            result = refresh_service.run_refresh()
+
+        cache_data = getattr(st, "cache_data", None)
+        if cache_data is not None and hasattr(cache_data, "clear"):
+            cache_data.clear()
+
+        if result.get("success"):
+            _toast_success(result.get("message", "OPENEDGE refreshed successfully"))
+            st.rerun()
+
+        _toast_error(result.get("message", "Refresh failed. Previous report remains available."))
+    except Exception:
+        _toast_error("Refresh failed safely. Previous report remains available.")
+    finally:
+        st.session_state["oe_refresh_running"] = False
+
+
 def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
     inject_styles(st)
 
+    if "oe_refresh_seconds" not in st.session_state:
+        st.session_state["oe_refresh_seconds"] = 30
+
+    interval_options = [15, 30, 60, 120, 300]
+    current_interval = st.session_state.get("oe_refresh_seconds", 30)
+    if current_interval not in interval_options:
+        st.session_state["oe_refresh_seconds"] = 30
+
+    refresh_service = RefreshService(BASE_DIR)
+    health_service = HealthService(BASE_DIR)
+
+    with st.expander("Refresh Controls", expanded=True):
+        st.checkbox("Enable auto-refresh", value=st.session_state.get("oe_auto_refresh", False), key="oe_auto_refresh")
+        st.selectbox(
+            "Auto-refresh interval (seconds)",
+            options=interval_options,
+            key="oe_refresh_seconds",
+        )
+        if st.button("Refresh now"):
+            st.rerun()
+        _run_refresh_button(refresh_service)
+        selected_interval = st.session_state.get("oe_refresh_seconds", 30)
+        st.caption(f"Current interval: {selected_interval}s")
+
+        refresh_status = refresh_service.get_refresh_status()
+        status_cols = st.columns(3)
+        status_cols[0].markdown(f"**Last successful refresh:** {refresh_status.get('last_successful_refresh', 'N/A')}")
+        status_cols[1].markdown(f"**Refresh duration:** {refresh_status.get('last_duration_seconds', 'N/A')}s")
+        status_cols[2].markdown(f"**Refresh status:** {'RUNNING' if refresh_status.get('is_running') else refresh_status.get('last_message', 'N/A')}")
+
+    if st.session_state.get("oe_auto_refresh", False):
+        if st_autorefresh is not None:
+            st_autorefresh(interval=int(st.session_state.get("oe_refresh_seconds", 60)) * 1000, key="oe_dashboard_autorefresh")
+        else:
+            st.info("Auto-refresh is unavailable because streamlit-autorefresh is not installed in this environment.")
+
     generated_at = datetime.now().astimezone()
 
-    snapshot = get_market_snapshot()
-    market_internals, internals_fetched_at = get_market_internals_with_cache()
-    macro_events = get_macro_events()
-    historical_result = get_historical_matches(CSV_FILE, top_n=5)
-    leadership, _, used_fallback = get_leadership_with_fallback()
+    source_warnings = []
+
+    snapshot_result = safe_source_call("Yahoo market data", get_market_snapshot_with_cache, fallback_fn=lambda: (_fallback_market_snapshot(), datetime.now()))
+    if snapshot_result.warning:
+        source_warnings.append(snapshot_result.warning)
+    snapshot, _ = snapshot_result.value if snapshot_result.value else ({}, datetime.now())
+
+    internals_result = safe_source_call("Market internals", get_market_internals_with_cache, fallback_fn=lambda: (_fallback_market_internals(), datetime.now()))
+    if internals_result.warning:
+        source_warnings.append(internals_result.warning)
+    market_internals, internals_fetched_at = internals_result.value if internals_result.value else ({}, datetime.now())
+
+    macro_result = safe_source_call("Macro events", get_macro_events, fallback_fn=_fallback_macro_events)
+    if macro_result.warning:
+        source_warnings.append(macro_result.warning)
+    macro_events = macro_result.value or []
+
+    historical_result_data = safe_source_call(
+        "Historical CSV/database",
+        lambda: get_historical_matches(CSV_FILE, top_n=5),
+        fallback_fn=_fallback_historical_matches,
+    )
+    if historical_result_data.warning:
+        source_warnings.append(historical_result_data.warning)
+    historical_result = historical_result_data.value or {}
+
+    leadership_result = safe_source_call(
+        "Leadership data",
+        get_leadership_with_fallback,
+        fallback_fn=lambda: (_fallback_leadership(), datetime.now(), True),
+    )
+    if leadership_result.warning:
+        source_warnings.append(leadership_result.warning)
+    leadership, _, used_fallback = leadership_result.value if leadership_result.value else ({}, datetime.now(), True)
+
     latest_signal = load_latest_signal()
     history_df = load_signal_history()
     validation_engine = ValidationEngine(db_path=CSV_FILE, journal_path=JOURNAL_FILE, reports_dir=BASE_DIR / "reports")
@@ -378,6 +588,7 @@ def main():
     )
     report = engine.build_report()
     workflow_status = load_workflow_status()
+    health = health_service.get_health()
     market = report.get("market", {})
     macro = report.get("macro", {})
     leadership_report = report.get("leadership", {})
@@ -386,11 +597,18 @@ def main():
 
     st.markdown("<div class='oe-shell'><div class='oe-kicker'>Morning Research Terminal</div><h1 class='oe-title'>OPENEDGE</h1><p class='oe-subtitle'>Research Before Risk</p></div>", unsafe_allow_html=True)
 
-    meta_cols = st.columns(4)
+    for warning in source_warnings:
+        st.warning(warning)
+
+    if health.get("application_status") != "healthy":
+        st.warning("System health is degraded. OPENEDGE is operating with available data and stale fallbacks where needed.")
+
+    meta_cols = st.columns(5)
     meta_cols[0].markdown(f"<div class='oe-meta-card'><strong>Current Date</strong><br>{generated_at.strftime('%Y-%m-%d')}</div>", unsafe_allow_html=True)
     meta_cols[1].markdown(f"<div class='oe-meta-card'><strong>Current Time</strong><br>{generated_at.strftime('%H:%M:%S %Z')}</div>", unsafe_allow_html=True)
     meta_cols[2].markdown(f"<div class='oe-meta-card'><strong>OPENEDGE Version</strong><br>{DISPLAY_VERSION}</div>", unsafe_allow_html=True)
     meta_cols[3].markdown(f"<div class='oe-meta-card'><strong>Last Market Refresh</strong><br>{internals_fetched_at.strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
+    meta_cols[4].markdown(f"<div class='oe-meta-card'><strong>Health</strong><br>{health.get('application_status', 'unknown').upper()}</div>", unsafe_allow_html=True)
 
     render_section_header(st, "Workflow Automation")
     w1, w2, w3, w4 = st.columns(4)

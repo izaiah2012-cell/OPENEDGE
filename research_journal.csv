@@ -1,3 +1,7 @@
 date,market_regime,bias,confidence,actual,correct,notes
 2026-07-02,Risk Off,DOWN,,,,source=backfill
 2026-07-08,Risk Off,BEARISH,67.0,DOWN,1.0,source=morning_workflow
+2026-07-15,Risk On,BULLISH,73,DOWN,1,source=morning_workflow
+2026-07-15,Risk On,BULLISH,73,DOWN,1,source=morning_workflow
+2026-07-15,Risk On,BULLISH,73,DOWN,1,source=morning_workflow
+2026-07-15,Balanced,NEUTRAL,63,DOWN,1,source=morning_workflow

@@ -18,7 +18,7 @@ from openedge.validation.validation_engine import ValidationEngine
 def _safe_plotly_chart(st_module, fig):
     plotly_chart = getattr(st_module, "plotly_chart", None)
     if callable(plotly_chart):
-        plotly_chart(fig, use_container_width=True)
+        plotly_chart(fig, width="stretch")
     else:
         st_module.write("Chart view unavailable in this environment.")
 
@@ -225,6 +225,7 @@ def main():
                 "notes": "Notes",
             }
         )
+        display_entries["Confidence"] = pd.to_numeric(display_entries["Confidence"], errors="coerce").astype("Int64")
 
         export_buffer = io.StringIO()
         display_entries.to_csv(export_buffer, index=False)
