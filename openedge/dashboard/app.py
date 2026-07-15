@@ -610,14 +610,211 @@ def main():
     if health.get("application_status") != "healthy":
         st.warning("System health is degraded. OPENEDGE is operating with available data and stale fallbacks where needed.")
 
+    # Compact Meta Info
     meta_cols = st.columns(5)
-    meta_cols[0].markdown(f"<div class='oe-meta-card'><strong>Current Date</strong><br>{generated_at.strftime('%Y-%m-%d')}</div>", unsafe_allow_html=True)
-    meta_cols[1].markdown(f"<div class='oe-meta-card'><strong>Current Time</strong><br>{generated_at.strftime('%H:%M:%S %Z')}</div>", unsafe_allow_html=True)
-    meta_cols[2].markdown(f"<div class='oe-meta-card'><strong>OPENEDGE Version</strong><br>{DISPLAY_VERSION}</div>", unsafe_allow_html=True)
-    meta_cols[3].markdown(f"<div class='oe-meta-card'><strong>Last Market Refresh</strong><br>{internals_fetched_at.strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
-    meta_cols[4].markdown(f"<div class='oe-meta-card'><strong>Health</strong><br>{health.get('application_status', 'unknown').upper()}</div>", unsafe_allow_html=True)
+    meta_cols[0].markdown(f"<div class='oe-meta-card'><strong>Date</strong><br>{generated_at.strftime('%Y-%m-%d')}</div>", unsafe_allow_html=True)
+    meta_cols[1].markdown(f"<div class='oe-meta-card'><strong>Time</strong><br>{generated_at.strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
+    meta_cols[2].markdown(f"<div class='oe-meta-card'><strong>Version</strong><br>{DISPLAY_VERSION}</div>", unsafe_allow_html=True)
+    meta_cols[3].markdown(f"<div class='oe-meta-card'><strong>Market Refresh</strong><br>{internals_fetched_at.strftime('%H:%M')}</div>", unsafe_allow_html=True)
+    meta_cols[4].markdown(f"<div class='oe-meta-card'><strong>Status</strong><br>{health.get('application_status', 'unknown').upper()}</div>", unsafe_allow_html=True)
 
-    render_section_header(st, "Workflow Automation")
+    st.divider()
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # HERO SECTION: TODAY'S DECISION
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    render_section_header(st, "🎯 Today's Decision", "Pre-market executive snapshot")
+    decision_cells = [
+        ("Market Regime", f"{market.get('market_regime', 'N/A')} {render_status_badge(market.get('market_regime', 'N/A'))}"),
+        ("Bias", f"{market.get('bias', 'N/A')} {render_status_badge(market.get('bias', 'N/A'))}"),
+        ("Confidence", f"{market.get('confidence', 'N/A')}/100"),
+        ("Opening Auction Risk", f"{market.get('opening_risk', 'N/A')}/10"),
+        ("Opportunity Score", f"{market.get('opportunity_score', 'N/A')}/10"),
+        ("Macro Risk", f"{macro.get('macro_risk', 'N/A')}"),
+        ("Market Temperature", market.get("opening_style", "N/A")),
+        ("Last Updated", generated_at.strftime("%H:%M:%S")),
+    ]
+    decision_html = "".join([f"<div class='oe-cell'><div class='oe-cell-label'>{label}</div><div class='oe-cell-value'>{value}</div></div>" for label, value in decision_cells])
+    st.markdown(f"<div class='oe-shell'><div class='oe-decision-grid'>{decision_html}</div></div>", unsafe_allow_html=True)
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # MORNING BRIEF: Concise Executive Summary
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    render_section_header(st, "📋 Morning Brief", "Five-sentence market outlook")
+    st.markdown("<div style='font-size: 16px; line-height: 1.8; padding: 20px 0;'>", unsafe_allow_html=True)
+    st.write(summary.get("executive_summary", "No executive summary available."))
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # MARKET INTERNALS: Compact Table (9 Core Tickers)
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    render_section_header(st, "📊 Market Internals", "Core market movers today")
+    st.dataframe(market_internals_table(market.get("internals_rows", [])), hide_index=True, width="stretch")
+    st.caption(market.get("internals_summary", "N/A"))
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # LEADERSHIP: Horizontal Chart
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    render_section_header(st, "👑 Leadership Trends")
+    if used_fallback:
+        st.info("Leadership data is using last known values due to temporary data gaps.")
+    leader_chart = leadership_chart(leadership_report.get("rows", []))
+    if isinstance(leader_chart, pd.DataFrame):
+        st.dataframe(leader_chart, hide_index=True, width="stretch")
+    elif leader_chart is not None:
+        _safe_plotly_chart(st, leader_chart)
+    else:
+        st.info("Leadership chart unavailable.")
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # MACRO EVENTS: Today Only
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    render_section_header(st, "🌍 Today's Macro Events", "Economic calendar and data releases")
+    st.dataframe(macro_events_styled_table(macro.get("today_events", [])), hide_index=True, width="stretch")
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # AI RESEARCH SUMMARY: Core Insights
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    render_section_header(st, "🔬 AI Research Summary")
+    st.markdown("<div style='padding: 15px 0;'>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.markdown("**Market Regime**")
+        st.write(market.get('market_regime', 'N/A'))
+        
+        st.markdown("**Leadership Summary**")
+        st.write(leadership_report.get('summary', 'N/A'))
+    
+    with col2:
+        st.markdown("**Macro Summary**")
+        st.write(macro.get('macro_summary', 'N/A'))
+        
+        st.markdown("**Today's Focus**")
+        st.write(summary.get("todays_focus", "N/A"))
+    
+    st.markdown("**Research Conclusion**")
+    st.write(summary.get("research_conclusion", "N/A"))
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # COLLAPSIBLE SECTIONS: Historical, Performance, Validation, Charts
+    # ═════════════════════════════════════════════════════════════════════════════════════
+
+    # Historical Match Details
+    with st.expander("📈 Historical Match Analysis", expanded=False):
+        best_match = historical.get("best_match", {})
+        h1, h2, h3, h4 = st.columns(4)
+        render_metric_card(h1, "Best Match", best_match.get("date", "N/A"))
+        render_metric_card(h2, "Similarity", f"{float(best_match.get('similarity', 0.0)):.2f}%")
+        render_metric_card(h3, "Expected Outcome", historical.get("expected_outcome", "N/A"))
+        render_metric_card(h4, "Historical Confidence", historical.get("historical_confidence", "N/A"))
+        
+        hist_chart = historical_matches_chart(historical.get("rows", []))
+        if isinstance(hist_chart, pd.DataFrame):
+            st.dataframe(hist_chart, hide_index=True, width="stretch")
+        elif hist_chart is not None:
+            _safe_plotly_chart(st, hist_chart)
+
+    # Performance Details
+    with st.expander("📊 Performance Metrics", expanded=False):
+        performance = summary.get("performance", {})
+        p1, p2, p3, p4 = st.columns(4)
+        render_metric_card(p1, "Signals Tracked", performance.get("signals_tracked", 0))
+        render_metric_card(p2, "Correct Calls", performance.get("correct_calls", 0))
+        render_metric_card(p3, "Incorrect Calls", performance.get("incorrect_calls", 0))
+        render_metric_card(p4, "Historical Accuracy", f"{float(performance.get('historical_accuracy') or 0.0):.2f}%")
+        
+        rolling_chart = rolling_accuracy_chart(performance.get("rolling_accuracy", []))
+        if isinstance(rolling_chart, pd.DataFrame):
+            st.dataframe(rolling_chart, hide_index=True, width="stretch")
+        elif rolling_chart is not None:
+            _safe_plotly_chart(st, rolling_chart)
+
+    # Validation Trends (moved from top)
+    validation_summary = validation_engine.summary()
+    rolling_20 = validation_engine.rolling_accuracy(window=20)
+    by_regime = validation_engine.accuracy_by_market_regime().get("items", [])
+    confidence_calibration = validation_engine.confidence_calibration().get("items", [])
+    monthly = validation_engine.monthly_accuracy().get("items", [])
+
+    with st.expander("✅ Validation Trends", expanded=False):
+        v1, v2, v3, v4, v5 = st.columns(5)
+        render_metric_card(v1, "Total Signals", validation_summary.get("total_signals", 0))
+        render_metric_card(v2, "Correct", validation_summary.get("correct_signals", 0))
+        render_metric_card(v3, "Incorrect", validation_summary.get("incorrect_signals", 0))
+        render_metric_card(v4, "Overall Accuracy", f"{float(validation_summary.get('overall_accuracy', 0.0)):.2f}%")
+        render_metric_card(v5, "Rolling 20-session", f"{float(validation_summary.get('rolling_20_accuracy', 0.0)):.2f}%")
+
+        st.markdown("**Rolling Accuracy (20-session)**")
+        if rolling_20.get("points"):
+            rolling_frame = pd.DataFrame(rolling_20.get("points", []))
+            if go is None:
+                st.dataframe(rolling_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure(
+                    go.Scatter(
+                        x=rolling_frame["date"],
+                        y=rolling_frame["accuracy"],
+                        mode="lines+markers",
+                        line=dict(color="#0ea5e9", width=2),
+                    )
+                )
+                fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+                _safe_plotly_chart(st, fig)
+        else:
+            st.info("No rolling accuracy data available yet.")
+
+        st.markdown("**Accuracy by Regime**")
+        if by_regime:
+            regime_frame = pd.DataFrame(by_regime)
+            if go is None:
+                st.dataframe(regime_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure(go.Bar(x=regime_frame["regime"], y=regime_frame["accuracy"], marker_color="#10b981"))
+                fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+                _safe_plotly_chart(st, fig)
+
+        st.markdown("**Confidence Calibration**")
+        if confidence_calibration:
+            confidence_frame = pd.DataFrame(confidence_calibration)
+            if go is None:
+                st.dataframe(confidence_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure(go.Bar(x=confidence_frame["band"], y=confidence_frame["accuracy_percent"], marker_color="#f59e0b"))
+                fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+                _safe_plotly_chart(st, fig)
+
+        st.markdown("**Monthly Accuracy**")
+        if monthly:
+            monthly_frame = pd.DataFrame(monthly)
+            if go is None:
+                st.dataframe(monthly_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure(go.Bar(x=monthly_frame["month"], y=monthly_frame["accuracy"], marker_color="#6366f1"))
+                fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
+                _safe_plotly_chart(st, fig)
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # OPERATIONS & SYSTEM CONTROLS
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with st.expander("⚙️ Research Notes", expanded=False):
+        st.markdown("**Primary Risks**")
+        _render_bullet_lines(st, summary.get("key_risks", []))
+        st.markdown("**Strengths**")
+        _render_bullet_lines(st, summary.get("strengths", []))
+        st.markdown("**Weaknesses**")
+        _render_bullet_lines(st, summary.get("weaknesses", []))
+
+    st.divider()
+
+    # Operations Section (moved to bottom)
+    render_section_header(st, "🔧 Workflow Automation")
     w1, w2, w3, w4 = st.columns(4)
     render_metric_card(w1, "Last Workflow Run", workflow_status.get("last_workflow_run", "N/A"))
     duration = workflow_status.get("workflow_duration_seconds", "N/A")
@@ -626,168 +823,9 @@ def main():
     render_metric_card(w3, "Last Report Generated", workflow_status.get("last_report_generated", "N/A"))
     render_metric_card(w4, "Research Status", workflow_status.get("research_status", "N/A"))
 
-    render_section_header(st, "System Status")
+    render_section_header(st, "🏥 System Health")
     _render_system_status(st, summary.get("system_status", {}))
 
-    render_section_header(st, "Research Validation")
-    validation_summary = validation_engine.summary()
-    rolling_20 = validation_engine.rolling_accuracy(window=20)
-    by_regime = validation_engine.accuracy_by_market_regime().get("items", [])
-    confidence_calibration = validation_engine.confidence_calibration().get("items", [])
-    monthly = validation_engine.monthly_accuracy().get("items", [])
-
-    v1, v2, v3, v4, v5 = st.columns(5)
-    render_metric_card(v1, "Total Signals", validation_summary.get("total_signals", 0))
-    render_metric_card(v2, "Correct Signals", validation_summary.get("correct_signals", 0))
-    render_metric_card(v3, "Incorrect Signals", validation_summary.get("incorrect_signals", 0))
-    render_metric_card(v4, "Overall Accuracy", f"{float(validation_summary.get('overall_accuracy', 0.0)):.2f}%")
-    render_metric_card(v5, "Rolling 20-session Accuracy", f"{float(validation_summary.get('rolling_20_accuracy', 0.0)):.2f}%")
-
-    v6, v7, v8, v9 = st.columns(4)
-    render_metric_card(v6, "Average Confidence", f"{float(validation_summary.get('average_confidence', 0.0)):.2f}")
-    render_metric_card(v7, "Best Regime", validation_summary.get("best_performing_regime", "N/A"))
-    render_metric_card(v8, "Worst Regime", validation_summary.get("worst_performing_regime", "N/A"))
-    render_metric_card(v9, "Avg Historical Similarity", f"{float(validation_summary.get('average_historical_similarity', 0.0)):.2f}%")
-
-    if not rolling_20.get("points"):
-        st.info("No validation records available yet. Run morning sessions to populate performance charts.")
-    else:
-        st.markdown("**Rolling Accuracy**")
-        rolling_frame = pd.DataFrame(rolling_20.get("points", []))
-        if go is None:
-            st.dataframe(rolling_frame, hide_index=True, width="stretch")
-        else:
-            fig = go.Figure(
-                go.Scatter(
-                    x=rolling_frame["date"],
-                    y=rolling_frame["accuracy"],
-                    mode="lines+markers",
-                    line=dict(color="#0ea5e9", width=2),
-                )
-            )
-            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
-            _safe_plotly_chart(st, fig)
-
-    st.markdown("**Accuracy by Regime**")
-    if by_regime:
-        regime_frame = pd.DataFrame(by_regime)
-        if go is None:
-            st.dataframe(regime_frame, hide_index=True, width="stretch")
-        else:
-            fig = go.Figure(go.Bar(x=regime_frame["regime"], y=regime_frame["accuracy"], marker_color="#10b981"))
-            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
-            _safe_plotly_chart(st, fig)
-    else:
-        st.info("No regime-level accuracy data available yet.")
-
-    st.markdown("**Confidence Calibration**")
-    if confidence_calibration:
-        confidence_frame = pd.DataFrame(confidence_calibration)
-        if go is None:
-            st.dataframe(confidence_frame, hide_index=True, width="stretch")
-        else:
-            fig = go.Figure(go.Bar(x=confidence_frame["band"], y=confidence_frame["accuracy_percent"], marker_color="#f59e0b"))
-            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
-            _safe_plotly_chart(st, fig)
-    else:
-        st.info("No confidence band records available yet.")
-
-    st.markdown("**Monthly Accuracy**")
-    if monthly:
-        monthly_frame = pd.DataFrame(monthly)
-        if go is None:
-            st.dataframe(monthly_frame, hide_index=True, width="stretch")
-        else:
-            fig = go.Figure(go.Bar(x=monthly_frame["month"], y=monthly_frame["accuracy"], marker_color="#6366f1"))
-            fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
-            _safe_plotly_chart(st, fig)
-    else:
-        st.info("No monthly validation data available yet.")
-
-    render_section_header(st, "Today's Decision", "Executive snapshot for the pre-market session")
-    decision_cells = [
-        ("Market Regime", f"{market.get('market_regime', 'N/A')} {render_status_badge(market.get('market_regime', 'N/A'))}"),
-        ("Bias", f"{market.get('bias', 'N/A')} {render_status_badge(market.get('bias', 'N/A'))}"),
-        ("Confidence", f"{market.get('confidence', 'N/A')}/100"),
-        ("Opening Auction Risk", f"{market.get('opening_risk', 'N/A')}/10"),
-        ("Opportunity Score", f"{market.get('opportunity_score', 'N/A')}/10"),
-        ("Opening Style", market.get("opening_style", "N/A")),
-        ("Primary Risk", (summary.get("key_risks", ["No elevated risk catalyst identified"]) or ["No elevated risk catalyst identified"])[0]),
-        ("Suggested Focus", summary.get("todays_focus", "N/A")),
-    ]
-    decision_html = "".join([f"<div class='oe-cell'><div class='oe-cell-label'>{label}</div><div class='oe-cell-value'>{value}</div></div>" for label, value in decision_cells])
-    st.markdown(f"<div class='oe-shell'><div class='oe-decision-grid'>{decision_html}</div></div>", unsafe_allow_html=True)
-
-    render_section_header(st, "KPI Dashboard")
-    k1, k2, k3, k4, k5 = st.columns(5)
-    render_metric_card(k1, "Confidence", f"{market.get('confidence', 'N/A')}/100")
-    render_metric_card(k2, "Opening Auction Risk", f"{market.get('opening_risk', 'N/A')}/10")
-    render_metric_card(k3, "Bias", market.get("bias", "N/A"))
-    render_metric_card(k4, "Opportunity Score", f"{market.get('opportunity_score', 'N/A')}/10")
-    render_metric_card(k5, "Market Regime", market.get("market_regime", "N/A"))
-    confidence_value = float(market.get("confidence", 0)) if market.get("confidence") not in (None, "N/A") else 0.0
-    st.progress(max(0.0, min(1.0, confidence_value / 100.0)))
-
-    render_section_header(st, "Market Internals")
-    st.dataframe(market_internals_table(market.get("internals_rows", [])), hide_index=True, width="stretch")
-    st.caption(market.get("internals_summary", "N/A"))
-
-    render_section_header(st, "Leadership")
-    if used_fallback:
-        st.info("Leadership is partially using last known values due to temporary data gaps.")
-    leader_chart = leadership_chart(leadership_report.get("rows", []))
-    if isinstance(leader_chart, pd.DataFrame):
-        st.dataframe(leader_chart, hide_index=True, width="stretch")
-    elif leader_chart is not None:
-        _safe_plotly_chart(st, leader_chart)
-    else:
-        st.info("Leadership chart unavailable.")
-
-    render_section_header(st, "Macro Events")
-    st.dataframe(macro_events_styled_table(macro.get("today_events", [])), hide_index=True, width="stretch")
-    render_metric_card(st, "Overall Macro Risk", macro.get("macro_risk", "N/A"))
-
-    render_section_header(st, "Historical Match")
-    best_match = historical.get("best_match", {})
-    h1, h2, h3, h4 = st.columns(4)
-    render_metric_card(h1, "Best Match", best_match.get("date", "N/A"))
-    render_metric_card(h2, "Similarity", f"{float(best_match.get('similarity', 0.0)):.2f}%")
-    render_metric_card(h3, "Expected Outcome", historical.get("expected_outcome", "N/A"))
-    render_metric_card(h4, "Historical Confidence", historical.get("historical_confidence", "N/A"))
-    hist_chart = historical_matches_chart(historical.get("rows", []))
-    if isinstance(hist_chart, pd.DataFrame):
-        st.dataframe(hist_chart, hide_index=True, width="stretch")
-    elif hist_chart is not None:
-        _safe_plotly_chart(st, hist_chart)
-
-    render_section_header(st, "Performance")
-    performance = summary.get("performance", {})
-    p1, p2, p3, p4 = st.columns(4)
-    render_metric_card(p1, "Signals Tracked", performance.get("signals_tracked", 0))
-    render_metric_card(p2, "Correct Calls", performance.get("correct_calls", 0))
-    render_metric_card(p3, "Incorrect Calls", performance.get("incorrect_calls", 0))
-    render_metric_card(p4, "Historical Accuracy", f"{float(performance.get('historical_accuracy') or 0.0):.2f}%")
-    rolling_chart = rolling_accuracy_chart(performance.get("rolling_accuracy", []))
-    if isinstance(rolling_chart, pd.DataFrame):
-        st.dataframe(rolling_chart, hide_index=True, width="stretch")
-    elif rolling_chart is not None:
-        _safe_plotly_chart(st, rolling_chart)
-
-    render_section_header(st, "AI Morning Brief", "Executive research narrative")
-    st.markdown("<div class='oe-brief'>", unsafe_allow_html=True)
-    st.markdown("**Executive Summary**")
-    st.write(summary.get("executive_summary", "N/A"))
-    st.markdown("**Today's Focus**")
-    st.write(summary.get("todays_focus", "N/A"))
-    st.markdown("**Primary Risks**")
-    _render_bullet_lines(st, summary.get("key_risks", []))
-    st.markdown("**Strengths**")
-    _render_bullet_lines(st, summary.get("strengths", []))
-    st.markdown("**Weaknesses**")
-    _render_bullet_lines(st, summary.get("weaknesses", []))
-    st.markdown("**Research Conclusion**")
-    st.write(summary.get("research_conclusion", "N/A"))
-    st.markdown("</div>", unsafe_allow_html=True)
 
     render_footer(st, DISPLAY_VERSION, generated_at)
 

@@ -43,6 +43,12 @@ def test_csv_is_located_from_project_root():
 
 def test_dashboard_app_loads_without_raising(monkeypatch):
     class DummyContainer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
         def metric(self, *args, **kwargs):
             return None
 
