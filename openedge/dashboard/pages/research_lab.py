@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover
 from openedge.dashboard.components import inject_styles, render_footer, render_metric_card, render_section_header
 from openedge.validation.validation_engine import ValidationEngine
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[3]
 CSV_FILE = BASE_DIR / "openedge_db.csv"
 JOURNAL_FILE = BASE_DIR / "research_journal.csv"
 DISPLAY_VERSION = "v1.0.0-beta"
