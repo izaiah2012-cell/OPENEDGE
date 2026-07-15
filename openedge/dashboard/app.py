@@ -1,3 +1,10 @@
+import sys as _sys
+from pathlib import Path as _Path
+# Ensure repo root is importable on Streamlit Cloud (no pip install needed)
+_repo_root = str(_Path(__file__).resolve().parents[2])
+if _repo_root not in _sys.path:
+    _sys.path.insert(0, _repo_root)
+
 from pathlib import Path
 from datetime import datetime
 import json

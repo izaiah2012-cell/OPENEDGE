@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_repo_root = str(_Path(__file__).resolve().parents[3])
+if _repo_root not in _sys.path:
+    _sys.path.insert(0, _repo_root)
+
 import io
 from datetime import datetime
 
