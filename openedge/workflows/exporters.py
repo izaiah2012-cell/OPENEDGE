@@ -37,9 +37,23 @@ class MarkdownExporter:
 
         historical = report.get("Historical Match", {})
         best_match = historical.get("best_match", {}) if isinstance(historical, dict) else {}
+        metadata = report.get("Report Metadata", {})
+
+        internals_text = "\n".join(internals_lines)
+        leadership_text = "\n".join(leadership_lines)
+        macro_text = "\n".join(macro_lines)
+        metadata_lines = [
+            f"- Version: {metadata.get('Version', report.get('Version', 'N/A'))}",
+            f"- Generated Timestamp: {metadata.get('Generated Timestamp', report.get('Timestamp', 'N/A'))}",
+            f"- Workflow ID: {metadata.get('Workflow ID', 'N/A')}",
+            f"- Report ID: {metadata.get('Report ID', 'N/A')}",
+            f"- Historical Database Version: {metadata.get('Historical Database Version', 'N/A')}",
+        ]
 
         return (
             "# OPENEDGE Daily Research\n\n"
+            "## Report Metadata\n"
+            f"{'\n'.join(metadata_lines)}\n\n"
             "## Executive Summary\n"
             f"{report.get('Morning Brief', 'N/A')}\n\n"
             "## Market Regime\n"
@@ -50,11 +64,11 @@ class MarkdownExporter:
             f"- Opening Style: {report.get('Opening Style', 'N/A')}\n"
             f"- Opportunity Score: {report.get('Opportunity Score', 'N/A')}/10\n\n"
             "## Market Internals\n"
-            f"{"\n".join(internals_lines)}\n\n"
+            f"{internals_text}\n\n"
             "## Leadership\n"
-            f"{"\n".join(leadership_lines)}\n\n"
+            f"{leadership_text}\n\n"
             "## Macro Events\n"
-            f"{"\n".join(macro_lines)}\n\n"
+            f"{macro_text}\n\n"
             "## Historical Match\n"
             f"- Best Match Date: {best_match.get('date', 'N/A')}\n"
             f"- Similarity: {best_match.get('similarity', 'N/A')}\n\n"

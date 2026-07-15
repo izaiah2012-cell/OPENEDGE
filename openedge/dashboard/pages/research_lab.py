@@ -41,7 +41,7 @@ def _safe_plotly_chart(st_module, fig):
 
 def main():
     try:
-        st.set_page_config(page_title="OPENEDGE Research Lab", page_icon="🔬", layout="wide")
+        st.set_page_config(page_title="OPENEDGE Research Lab", page_icon="🧪", layout="wide")
     except Exception:
         pass
 
@@ -56,149 +56,216 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Summary metrics at top
-    summary = validation_engine.summary()
-    m1, m2, m3, m4, m5 = st.columns(5)
-    render_metric_card(m1, "Total Signals", summary.get("total_signals", 0))
-    render_metric_card(m2, "Overall Accuracy", f"{float(summary.get('overall_accuracy', 0.0)):.2f}%")
-    render_metric_card(m3, "Rolling 20 Accuracy", f"{float(summary.get('rolling_20_accuracy', 0.0)):.2f}%")
-    render_metric_card(m4, "Average Confidence", f"{float(summary.get('average_confidence', 0.0)):.2f}")
-    render_metric_card(m5, "Avg Historical Similarity", f"{float(summary.get('average_historical_similarity', 0.0)):.2f}%")
+    # Create tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "📈 Performance", "✅ Validation", "🕐 History"])
 
-    # Rolling Accuracy
-    render_section_header(st, "Rolling Accuracy", "20-session and 50-session rolling windows")
+    validation_summary = validation_engine.summary()
     rolling_20 = validation_engine.rolling_accuracy(window=20)
     rolling_50 = validation_engine.rolling_accuracy(window=50)
+    by_regime = validation_engine.accuracy_by_market_regime().get("items", [])
+    confidence_calibration = validation_engine.confidence_calibration().get("items", [])
+    monthly = validation_engine.monthly_accuracy().get("items", [])
 
-    if rolling_20.get("points"):
-        rolling_frame = pd.DataFrame(rolling_20.get("points", []))
-        if go is not None:
-            fig = go.Figure(
-                go.Scatter(
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # TAB 1: OVERVIEW
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with tab1:
+        render_section_header(st, "📊 Research Metrics Overview")
+        
+        m1, m2, m3, m4, m5 = st.columns(5)
+        render_metric_card(m1, "Total Signals", validation_summary.get("total_signals", 0))
+        render_metric_card(m2, "Overall Accuracy", f"{float(validation_summary.get('overall_accuracy', 0.0)):.2f}%")
+        render_metric_card(m3, "Rolling 20 Accuracy", f"{float(validation_summary.get('rolling_20_accuracy', 0.0)):.2f}%")
+        render_metric_card(m4, "Average Confidence", f"{float(validation_summary.get('average_confidence', 0.0)):.2f}")
+        render_metric_card(m5, "Avg Historical Similarity", f"{float(validation_summary.get('average_historical_similarity', 0.0)):.2f}%")
+        
+        st.markdown("")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            render_section_header(st, "Best & Worst Regimes")
+            r1, r2 = st.columns(2)
+            render_metric_card(r1, "Best Regime", validation_summary.get("best_performing_regime", "N/A"))
+            render_metric_card(r2, "Worst Regime", validation_summary.get("worst_performing_regime", "N/A"))
+        
+        with col2:
+            render_section_header(st, "Signal Distribution")
+            r1, r2, r3 = st.columns(3)
+            render_metric_card(r1, "Correct Signals", validation_summary.get("correct_signals", 0))
+            render_metric_card(r2, "Incorrect Signals", validation_summary.get("incorrect_signals", 0))
+            accuracy_pct = float(validation_summary.get('overall_accuracy', 0.0))
+            render_metric_card(r3, "Hit Rate", f"{accuracy_pct:.1f}%")
+        
+        st.markdown("")
+        render_section_header(st, "Research Journal (Latest 20 Entries)")
+        journal_frame = validation_engine.journal_path
+        if journal_frame.exists():
+            try:
+                df = pd.read_csv(journal_frame)
+                if not df.empty:
+                    df = df.sort_values("date", ascending=False).head(20)
+                    st.dataframe(df, hide_index=True, width="stretch")
+                else:
+                    st.info("No journal entries yet.")
+            except Exception:
+                st.info("Unable to load journal.")
+        else:
+            st.info("No journal file available.")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # TAB 2: PERFORMANCE
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with tab2:
+        render_section_header(st, "📈 Performance Analysis")
+        
+        # Rolling Accuracy
+        render_section_header(st, "Rolling Accuracy (20 & 50-session)", subtitle="Performance trend over time")
+        if rolling_20.get("points"):
+            rolling_frame = pd.DataFrame(rolling_20.get("points", []))
+            if go is None:
+                st.dataframe(rolling_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
                     x=rolling_frame["date"],
                     y=rolling_frame["accuracy"],
                     mode="lines+markers",
                     name="20-session",
                     line=dict(color="#0ea5e9", width=2),
                     marker=dict(size=6),
+                ))
+                fig.update_layout(
+                    height=350,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    yaxis=dict(range=[0, 100]),
+                    showlegend=True,
+                    xaxis_title="Date",
+                    yaxis_title="Accuracy %",
                 )
-            )
-            fig.update_layout(
-                height=350,
-                margin=dict(l=10, r=10, t=10, b=10),
-                yaxis=dict(range=[0, 100]),
-                showlegend=True,
-                xaxis_title="Date",
-                yaxis_title="Accuracy %",
-            )
-            _safe_plotly_chart(st, fig)
+                _safe_plotly_chart(st, fig)
         else:
-            st.dataframe(rolling_frame, hide_index=True, width="stretch")
-    else:
-        st.info("Insufficient data for rolling accuracy charts.")
-
-    # Accuracy by Regime
-    render_section_header(st, "Accuracy by Market Regime")
-    by_regime = validation_engine.accuracy_by_market_regime().get("items", [])
-    if by_regime:
-        regime_frame = pd.DataFrame(by_regime)
-        if go is not None:
-            fig = go.Figure(
-                go.Bar(
-                    x=regime_frame["regime"],
-                    y=regime_frame["accuracy"],
-                    marker_color="#10b981",
-                    text=regime_frame["accuracy"],
-                    textposition="auto",
-                )
-            )
-            fig.update_layout(
-                height=320,
-                margin=dict(l=10, r=10, t=10, b=10),
-                yaxis=dict(range=[0, 100]),
-                showlegend=False,
-                xaxis_title="Market Regime",
-                yaxis_title="Accuracy %",
-            )
-            _safe_plotly_chart(st, fig)
-        else:
-            st.dataframe(regime_frame, hide_index=True, width="stretch")
-    else:
-        st.info("No regime-level accuracy data available.")
-
-    # Confidence Calibration
-    render_section_header(st, "Confidence Calibration", "Accuracy by confidence band")
-    calibration = validation_engine.confidence_calibration().get("items", [])
-    if calibration:
-        calibration_frame = pd.DataFrame(calibration)
-        if go is not None:
-            fig = go.Figure(
-                go.Bar(
-                    x=calibration_frame["band"],
-                    y=calibration_frame["accuracy_percent"],
-                    marker_color="#f59e0b",
-                    text=calibration_frame["accuracy_percent"],
-                    textposition="auto",
-                )
-            )
-            fig.update_layout(
-                height=320,
-                margin=dict(l=10, r=10, t=10, b=10),
-                yaxis=dict(range=[0, 100]),
-                showlegend=False,
-                xaxis_title="Confidence Band",
-                yaxis_title="Accuracy %",
-            )
-            _safe_plotly_chart(st, fig)
-
-        st.dataframe(calibration_frame, hide_index=True, width="stretch")
-    else:
-        st.info("No confidence calibration data available.")
-
-    # Monthly Accuracy
-    render_section_header(st, "Monthly Performance")
-    monthly = validation_engine.monthly_accuracy().get("items", [])
-    if monthly:
-        monthly_frame = pd.DataFrame(monthly)
-        if go is not None:
-            fig = go.Figure(
-                go.Scatter(
-                    x=monthly_frame["month"],
-                    y=monthly_frame["accuracy"],
-                    mode="lines+markers",
-                    line=dict(color="#6366f1", width=2),
-                    marker=dict(size=7),
-                )
-            )
-            fig.update_layout(
-                height=320,
-                margin=dict(l=10, r=10, t=10, b=10),
-                yaxis=dict(range=[0, 100]),
-                showlegend=False,
-                xaxis_title="Month",
-                yaxis_title="Accuracy %",
-            )
-            _safe_plotly_chart(st, fig)
-        else:
-            st.dataframe(monthly_frame, hide_index=True, width="stretch")
-    else:
-        st.info("No monthly accuracy data available.")
-
-    # Research Journal
-    render_section_header(st, "Research Journal", "Latest 20 trading session records")
-    journal_frame = validation_engine.journal_path
-    if journal_frame.exists():
-        try:
-            df = pd.read_csv(journal_frame)
-            if not df.empty:
-                df = df.sort_values("date", ascending=False).head(20)
-                st.dataframe(df, hide_index=True, width="stretch")
+            st.info("Insufficient data for rolling accuracy charts.")
+        
+        st.markdown("")
+        
+        # Monthly Accuracy
+        render_section_header(st, "Monthly Performance", subtitle="Accuracy trends by month")
+        if monthly:
+            monthly_frame = pd.DataFrame(monthly)
+            if go is None:
+                st.dataframe(monthly_frame, hide_index=True, width="stretch")
             else:
-                st.info("No journal entries yet.")
-        except Exception:
-            st.info("Unable to load journal.")
-    else:
-        st.info("No journal file available.")
+                fig = go.Figure(
+                    go.Scatter(
+                        x=monthly_frame["month"],
+                        y=monthly_frame["accuracy"],
+                        mode="lines+markers",
+                        line=dict(color="#6366f1", width=2),
+                        marker=dict(size=7),
+                    )
+                )
+                fig.update_layout(
+                    height=320,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    yaxis=dict(range=[0, 100]),
+                    showlegend=False,
+                    xaxis_title="Month",
+                    yaxis_title="Accuracy %",
+                )
+                _safe_plotly_chart(st, fig)
+        else:
+            st.info("No monthly accuracy data available.")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # TAB 3: VALIDATION
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with tab3:
+        render_section_header(st, "✅ Validation & Calibration")
+        
+        # Accuracy by Regime
+        render_section_header(st, "Accuracy by Market Regime", subtitle="Performance breakdown by regime")
+        if by_regime:
+            regime_frame = pd.DataFrame(by_regime)
+            if go is None:
+                st.dataframe(regime_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure(
+                    go.Bar(
+                        x=regime_frame["regime"],
+                        y=regime_frame["accuracy"],
+                        marker_color="#10b981",
+                        text=regime_frame["accuracy"],
+                        textposition="auto",
+                    )
+                )
+                fig.update_layout(
+                    height=320,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    yaxis=dict(range=[0, 100]),
+                    showlegend=False,
+                    xaxis_title="Market Regime",
+                    yaxis_title="Accuracy %",
+                )
+                _safe_plotly_chart(st, fig)
+        else:
+            st.info("No regime-level accuracy data available.")
+        
+        st.markdown("")
+        
+        # Confidence Calibration
+        render_section_header(st, "Confidence Calibration", subtitle="Accuracy by confidence band")
+        if confidence_calibration:
+            calibration_frame = pd.DataFrame(confidence_calibration)
+            if go is None:
+                st.dataframe(calibration_frame, hide_index=True, width="stretch")
+            else:
+                fig = go.Figure(
+                    go.Bar(
+                        x=calibration_frame["band"],
+                        y=calibration_frame["accuracy_percent"],
+                        marker_color="#f59e0b",
+                        text=calibration_frame["accuracy_percent"],
+                        textposition="auto",
+                    )
+                )
+                fig.update_layout(
+                    height=320,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    yaxis=dict(range=[0, 100]),
+                    showlegend=False,
+                    xaxis_title="Confidence Band",
+                    yaxis_title="Accuracy %",
+                )
+                _safe_plotly_chart(st, fig)
+
+            st.dataframe(calibration_frame, hide_index=True, width="stretch")
+        else:
+            st.info("No confidence calibration data available.")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # TAB 4: HISTORY
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with tab4:
+        render_section_header(st, "🕐 Historical Analysis")
+        
+        st.markdown("### Historical Similarity & Match Analysis")
+        st.info("This tab shows historical pattern matching quality and similar market conditions from the past.")
+        
+        # Display overall similarity score
+        avg_similarity = float(validation_summary.get("average_historical_similarity", 0.0))
+        col1, col2 = st.columns(2)
+        render_metric_card(col1, "Average Historical Similarity", f"{avg_similarity:.2f}%")
+        render_metric_card(col2, "Total Days Analyzed", validation_summary.get("total_signals", 0))
+        
+        st.markdown("")
+        st.markdown("**What this means:**")
+        st.markdown("""
+        - **90%+**: Today strongly matches a historical day – high confidence in pattern continuation
+        - **70-90%**: Good match with historical conditions – useful precedent available
+        - **50-70%**: Moderate similarity – some historical relevance
+        - **<50%**: Unique conditions – limited historical guidance
+        """)
 
     render_footer(st, DISPLAY_VERSION, datetime.now().astimezone())
 

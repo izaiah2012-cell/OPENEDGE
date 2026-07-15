@@ -17,11 +17,6 @@ try:
 except Exception:  # pragma: no cover
     go = None
 
-try:
-    from streamlit_autorefresh import st_autorefresh
-except Exception:  # pragma: no cover
-    st_autorefresh = None
-
 from openedge.dashboard.components import (
     inject_styles,
     render_footer,
@@ -38,14 +33,16 @@ from openedge.models.leadership_engine import evaluate_sector_leadership
 from openedge.services import HealthService, RefreshService
 from openedge.storage import LocalStorage
 from openedge.utils import safe_source_call
+from openedge.utils.timeline_monitor import DecisionTimeline, BiasTransitionMonitor, ResearchQuality
 from openedge.validation.validation_engine import ValidationEngine
 
 LEADERSHIP_SECTORS = ["Technology", "Financials", "Industrials", "Healthcare", "Consumer", "Energy"]
+CORE_MARKET_INTERNALS = ["SPY", "QQQ", "DIA", "VIX", "Gold", "Oil", "Dollar", "US10Y", "Bitcoin"]
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CSV_FILE = BASE_DIR / "openedge_db.csv"
 VERSION_FILE = BASE_DIR / "VERSION"
-DISPLAY_VERSION = "v1.0.0-beta"
+DISPLAY_VERSION = "v1.1.0"
 WORKFLOW_STATUS_FILE = BASE_DIR / "database" / "workflow_status.json"
 JOURNAL_FILE = BASE_DIR / "research_journal.csv"
 STORAGE = LocalStorage(BASE_DIR)
@@ -102,6 +99,11 @@ def market_internals_table(rows):
         rows = normalized
 
     frame = pd.DataFrame(rows)
+    if "Asset" in frame.columns:
+        frame = frame[frame["Asset"].astype(str).isin(CORE_MARKET_INTERNALS)]
+
+    if frame.empty:
+        return pd.DataFrame(columns=["Asset", "Price", "Daily %", "Direction"])
 
     def style_direction(value):
         if value == "UP":
@@ -507,41 +509,7 @@ def main():
     st.set_page_config(page_title="OPENEDGE", page_icon="📈", layout="wide")
     inject_styles(st)
 
-    if "oe_refresh_seconds" not in st.session_state:
-        st.session_state["oe_refresh_seconds"] = 30
-
-    interval_options = [15, 30, 60, 120, 300]
-    current_interval = st.session_state.get("oe_refresh_seconds", 30)
-    if current_interval not in interval_options:
-        st.session_state["oe_refresh_seconds"] = 30
-
-    refresh_service = RefreshService(BASE_DIR)
     health_service = HealthService(BASE_DIR)
-
-    with st.expander("Refresh Controls", expanded=True):
-        st.checkbox("Enable auto-refresh", value=st.session_state.get("oe_auto_refresh", False), key="oe_auto_refresh")
-        st.selectbox(
-            "Auto-refresh interval (seconds)",
-            options=interval_options,
-            key="oe_refresh_seconds",
-        )
-        if st.button("Refresh now"):
-            st.rerun()
-        _run_refresh_button(refresh_service)
-        selected_interval = st.session_state.get("oe_refresh_seconds", 30)
-        st.caption(f"Current interval: {selected_interval}s")
-
-        refresh_status = refresh_service.get_refresh_status()
-        status_cols = st.columns(3)
-        status_cols[0].markdown(f"**Last successful refresh:** {refresh_status.get('last_successful_refresh', 'N/A')}")
-        status_cols[1].markdown(f"**Refresh duration:** {refresh_status.get('last_duration_seconds', 'N/A')}s")
-        status_cols[2].markdown(f"**Refresh status:** {'RUNNING' if refresh_status.get('is_running') else refresh_status.get('last_message', 'N/A')}")
-
-    if st.session_state.get("oe_auto_refresh", False):
-        if st_autorefresh is not None:
-            st_autorefresh(interval=int(st.session_state.get("oe_refresh_seconds", 60)) * 1000, key="oe_dashboard_autorefresh")
-        else:
-            st.info("Auto-refresh is unavailable because streamlit-autorefresh is not installed in this environment.")
 
     generated_at = datetime.now().astimezone()
 
@@ -632,6 +600,7 @@ def main():
         ("Opportunity Score", f"{market.get('opportunity_score', 'N/A')}/10"),
         ("Macro Risk", f"{macro.get('macro_risk', 'N/A')}"),
         ("Market Temperature", market.get("opening_style", "N/A")),
+        ("Research Status", workflow_status.get("research_status", "N/A")),
         ("Last Updated", generated_at.strftime("%H:%M:%S")),
     ]
     decision_html = "".join([f"<div class='oe-cell'><div class='oe-cell-label'>{label}</div><div class='oe-cell-value'>{value}</div></div>" for label, value in decision_cells])
@@ -641,9 +610,18 @@ def main():
     # ═════════════════════════════════════════════════════════════════════════════════════
     # MORNING BRIEF: Concise Executive Summary
     # ═════════════════════════════════════════════════════════════════════════════════════
-    render_section_header(st, "📋 Morning Brief", "Five-sentence market outlook")
-    st.markdown("<div style='font-size: 16px; line-height: 1.8; padding: 20px 0;'>", unsafe_allow_html=True)
-    st.write(summary.get("executive_summary", "No executive summary available."))
+    render_section_header(st, "📋 Morning Brief", "3-5 sentence executive summary")
+    brief_points = [
+        ("Today's Summary", summary.get("executive_summary", "No executive summary available.")),
+        ("Today's Focus", summary.get("todays_focus", "N/A")),
+        ("Primary Risks", "; ".join(summary.get("key_risks", [])[:2]) if summary.get("key_risks") else "N/A"),
+        ("Strengths", "; ".join(summary.get("strengths", [])[:2]) if summary.get("strengths") else "N/A"),
+        ("Weaknesses", "; ".join(summary.get("weaknesses", [])[:2]) if summary.get("weaknesses") else "N/A"),
+        ("Expected Session Behaviour", market.get("opening_style", "N/A")),
+    ]
+    st.markdown("<div class='oe-brief'>", unsafe_allow_html=True)
+    for label, value in brief_points:
+        st.markdown(f"- **{label}:** {value}")
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("")
 
@@ -673,7 +651,7 @@ def main():
     # ═════════════════════════════════════════════════════════════════════════════════════
     # MACRO EVENTS: Today Only
     # ═════════════════════════════════════════════════════════════════════════════════════
-    render_section_header(st, "🌍 Today's Macro Events", "Economic calendar and data releases")
+    render_section_header(st, "🌍 Today's Macro Calendar", "Economic calendar and data releases")
     st.dataframe(macro_events_styled_table(macro.get("today_events", [])), hide_index=True, width="stretch")
     st.markdown("")
 
@@ -685,6 +663,9 @@ def main():
     
     col1, col2 = st.columns([1, 1])
     with col1:
+        st.markdown("**Executive Summary**")
+        st.write(summary.get('executive_summary', 'N/A'))
+
         st.markdown("**Market Regime**")
         st.write(market.get('market_regime', 'N/A'))
         
@@ -801,7 +782,71 @@ def main():
                 fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(range=[0, 100]), showlegend=False)
                 _safe_plotly_chart(st, fig)
     # ═════════════════════════════════════════════════════════════════════════════════════
-    # OPERATIONS & SYSTEM CONTROLS
+    # RESEARCH QUALITY BADGE
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    quality_calc = ResearchQuality()
+    quality_result = quality_calc.calculate_quality(report)
+    stars_emoji = ResearchQuality.format_stars(quality_result["stars"])
+    
+    st.markdown("")
+    quality_col1, quality_col2 = st.columns([3, 1])
+    with quality_col1:
+        render_section_header(st, "🎯 Research Quality")
+        st.markdown(f"### {stars_emoji} {quality_result['description']}")
+    with quality_col2:
+        st.markdown(f"**Quality Score:** {quality_result['score']}%")
+
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # DECISION TIMELINE
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with st.expander("📅 Decision Timeline", expanded=False):
+        timeline = DecisionTimeline()
+        today_events = timeline.get_today_timeline()
+        
+        if today_events:
+            st.markdown("**Today's Decision Events:**")
+            for event in today_events:
+                ts = event.get("timestamp", "")
+                event_type = event.get("type", "Unknown")
+                details = event.get("details", {})
+                st.markdown(f"- **{ts}** — {event_type}")
+                if details:
+                    st.caption(str(details))
+        else:
+            st.info("No decision events recorded yet. Events track workflow milestones and research confirmations.")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # BIAS TRANSITION MONITOR
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    with st.expander("🔄 Bias Transition Monitor", expanded=False):
+        bias_monitor = BiasTransitionMonitor()
+        transitions = bias_monitor.get_today_transitions()
+        
+        if transitions:
+            st.markdown("**Today's Bias Transitions:**")
+            for trans in transitions:
+                ts = trans.get("timestamp", "")
+                bias_before = trans.get("bias_before", "N/A")
+                bias_after = trans.get("bias_after", "N/A")
+                conf_before = trans.get("confidence_before", 0)
+                conf_after = trans.get("confidence_after", 0)
+                conf_change = trans.get("confidence_change", 0)
+                reason = trans.get("reason", "No reason provided")
+                
+                st.markdown(f"**{ts}**")
+                st.markdown(f"- Bias: {bias_before} → {bias_after}")
+                st.markdown(f"- Confidence: {conf_before}% → {conf_after}% ({conf_change:+.0f}%)")
+                st.markdown(f"- Reason: {reason}")
+                st.divider()
+        else:
+            st.info("No bias transitions today. Transitions are recorded when the market bias changes significantly or confidence levels shift.")
+
+    st.markdown("")
+
+    # ═════════════════════════════════════════════════════════════════════════════════════
+    # RESEARCH NOTES EXPANDER
     # ═════════════════════════════════════════════════════════════════════════════════════
     with st.expander("⚙️ Research Notes", expanded=False):
         st.markdown("**Primary Risks**")
@@ -812,20 +857,6 @@ def main():
         _render_bullet_lines(st, summary.get("weaknesses", []))
 
     st.divider()
-
-    # Operations Section (moved to bottom)
-    render_section_header(st, "🔧 Workflow Automation")
-    w1, w2, w3, w4 = st.columns(4)
-    render_metric_card(w1, "Last Workflow Run", workflow_status.get("last_workflow_run", "N/A"))
-    duration = workflow_status.get("workflow_duration_seconds", "N/A")
-    duration_value = f"{duration}s" if isinstance(duration, (int, float)) else str(duration)
-    render_metric_card(w2, "Workflow Duration", duration_value)
-    render_metric_card(w3, "Last Report Generated", workflow_status.get("last_report_generated", "N/A"))
-    render_metric_card(w4, "Research Status", workflow_status.get("research_status", "N/A"))
-
-    render_section_header(st, "🏥 System Health")
-    _render_system_status(st, summary.get("system_status", {}))
-
 
     render_footer(st, DISPLAY_VERSION, generated_at)
 

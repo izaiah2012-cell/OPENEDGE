@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -20,12 +21,15 @@ class HealthService:
 
         storage_ok = True
         try:
+            probe_path = self.base_dir / "database" / "health_probe.json"
+            probe_path.parent.mkdir(parents=True, exist_ok=True)
             storage_probe = {
                 "timestamp": datetime.now().astimezone().isoformat(),
                 "probe": "ok",
             }
-            storage_path = self.storage.save_refresh_metadata(storage_probe)
-            storage_ok = storage_path.exists()
+            probe_path.write_text(json.dumps(storage_probe, indent=2), encoding="utf-8")
+            storage_ok = probe_path.exists()
+            probe_path.unlink(missing_ok=True)
         except Exception:
             storage_ok = False
 

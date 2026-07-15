@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import traceback
 from datetime import datetime
+from hashlib import sha1
 from pathlib import Path
 
 import pandas as pd
@@ -86,6 +87,10 @@ class MorningWorkflow:
             macro_events=macro_events,
             leadership=leadership,
             historical_match=historical_match,
+            version="v1.1.0",
+            workflow_id=self.as_of.strftime("%Y%m%d%H%M%S"),
+            report_id=self._report_id(),
+            historical_database_version=self._historical_database_version(),
         )
 
     def export_reports(self, report):
@@ -201,6 +206,21 @@ class MorningWorkflow:
                 "notes": "source=morning_workflow",
             },
         )
+
+    def _report_id(self) -> str:
+        return f"OE-{self.as_of.strftime('%Y%m%d')}-{sha1(self.as_of.isoformat().encode('utf-8')).hexdigest()[:8]}"
+
+    def _historical_database_version(self) -> str:
+        if not self.csv_file.exists():
+            return "missing"
+
+        try:
+            payload = self.csv_file.read_bytes()
+            digest = sha1(payload).hexdigest()[:8]
+            row_count = len(pd.read_csv(self.csv_file))
+            return f"rows-{row_count}-{digest}"
+        except Exception:
+            return "unknown"
 
     def _load_signal_history(self):
         if not self.csv_file.exists():

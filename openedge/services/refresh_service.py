@@ -8,6 +8,7 @@ from time import perf_counter
 
 from openedge.storage import LocalStorage
 from openedge.utils.error_handling import safe_source_call
+from openedge.utils.timeline_monitor import BiasTransitionMonitor, DecisionTimeline
 from openedge.workflows.morning_workflow import MorningWorkflow
 
 
@@ -54,6 +55,7 @@ class RefreshService:
 
         try:
             workflow = MorningWorkflow(base_dir=self.base_dir, as_of=started_at)
+            report = {}
             try:
                 report = workflow.run()
                 report_paths = self.storage.save_report(report, as_of=workflow.as_of)
@@ -64,8 +66,23 @@ class RefreshService:
                 workflow.update_dashboard(report_paths=report_paths, success=True)
             except Exception:
                 self._run_fallback_refresh(workflow=workflow, warnings=warnings)
+                report = self.storage.load_latest_report() or {}
 
             duration = round(perf_counter() - timer_start, 2)
+            current_bias, current_confidence, current_regime = self._extract_report_signals(report)
+            previous_payload = self.storage.load_refresh_metadata()
+            previous_bias = previous_payload.get("current_bias", current_bias)
+            previous_confidence = self._coerce_float(previous_payload.get("current_confidence", current_confidence))
+
+            self._record_decision_timeline(workflow=workflow, report=report, duration=duration)
+            self._record_bias_transition(
+                previous_bias=previous_bias,
+                current_bias=current_bias,
+                previous_confidence=previous_confidence,
+                current_confidence=current_confidence,
+                reason=self._transition_reason(report),
+            )
+
             payload = {
                 "success": True,
                 "timestamp": datetime.now().astimezone().isoformat(),
@@ -74,6 +91,12 @@ class RefreshService:
                 "message": "OPENEDGE refreshed successfully",
                 "warnings": warnings,
                 "report_files": self.storage.load_workflow_status().get("report_files", {}),
+                "workflow_id": workflow.as_of.strftime("%Y%m%d%H%M%S"),
+                "report_id": report.get("Report ID", self._fallback_report_id(workflow.as_of)),
+                "current_bias": current_bias,
+                "current_confidence": current_confidence,
+                "market_regime": current_regime,
+                "version": report.get("Version", "v1.1.0"),
             }
             self.storage.save_refresh_metadata(payload)
             return payload
@@ -104,6 +127,79 @@ class RefreshService:
             "last_duration_seconds": payload.get("duration_seconds", "N/A"),
             "last_message": payload.get("message", "N/A"),
         }
+
+    def _record_decision_timeline(self, *, workflow: MorningWorkflow, report: dict, duration: float) -> None:
+        timeline = DecisionTimeline(self.base_dir / "database" / "decision_timeline.json")
+        payload = {
+            "workflow_id": workflow.as_of.strftime("%Y%m%d%H%M%S"),
+            "report_id": report.get("Report ID", self._fallback_report_id(workflow.as_of)),
+            "bias": report.get("Bias", "N/A"),
+            "confidence": report.get("Confidence", "N/A"),
+            "market_regime": report.get("Market Regime", "N/A"),
+            "duration_seconds": duration,
+            "status": "READY",
+        }
+        timeline.add_event("Morning Workflow", payload, timestamp=workflow.as_of)
+        timeline.add_event("Latest Refresh", payload, timestamp=datetime.now().astimezone())
+
+    def _record_bias_transition(self, *, previous_bias, current_bias, previous_confidence, current_confidence, reason: str) -> None:
+        if current_bias is None:
+            return
+
+        monitor = BiasTransitionMonitor(self.base_dir / "database" / "bias_transitions.json")
+        monitor.add_transition(
+            timestamp=datetime.now().astimezone(),
+            bias_before=str(previous_bias or current_bias),
+            bias_after=str(current_bias),
+            confidence_before=float(previous_confidence or 0.0),
+            confidence_after=float(current_confidence or 0.0),
+            reason=reason,
+        )
+
+    @staticmethod
+    def _fallback_report_id(as_of: datetime) -> str:
+        return f"OE-{as_of.strftime('%Y%m%d')}-{as_of.strftime('%H%M%S')}"
+
+    @staticmethod
+    def _coerce_float(value):
+        try:
+            if value in (None, "", "N/A"):
+                return None
+            return float(value)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_report_signals(report: dict) -> tuple[str | None, float | None, str | None]:
+        if not isinstance(report, dict):
+            return None, None, None
+
+        raw = report.get("Raw Engine Report", {}) if isinstance(report.get("Raw Engine Report", {}), dict) else {}
+        market = report.get("market", {}) if isinstance(report.get("market", {}), dict) else {}
+
+        bias = report.get("Bias") or market.get("bias") or raw.get("market", {}).get("bias")
+        confidence = report.get("Confidence") or market.get("confidence") or raw.get("market", {}).get("confidence")
+        regime = report.get("Market Regime") or market.get("market_regime") or raw.get("market", {}).get("market_regime")
+        return (
+            str(bias) if bias is not None else None,
+            RefreshService._coerce_float(confidence),
+            str(regime) if regime is not None else None,
+        )
+
+    @staticmethod
+    def _transition_reason(report: dict) -> str:
+        if not isinstance(report, dict):
+            return "Refresh completed"
+
+        summary = report.get("summary", {}) if isinstance(report.get("summary", {}), dict) else {}
+        if not summary:
+            raw = report.get("Raw Engine Report", {}) if isinstance(report.get("Raw Engine Report", {}), dict) else {}
+            summary = raw.get("summary", {}) if isinstance(raw.get("summary", {}), dict) else {}
+
+        risks = summary.get("key_risks", []) if isinstance(summary, dict) else []
+        if risks:
+            return "; ".join(str(item) for item in risks[:2])
+        return str(summary.get("research_conclusion", "Refresh completed") if isinstance(summary, dict) else "Refresh completed")
 
     def _run_fallback_refresh(self, *, workflow: MorningWorkflow, warnings: list[str]) -> None:
         latest_report = self.storage.load_latest_report() or {}
